@@ -1,0 +1,6 @@
+[package]
+name = "folktunefinder-abc"
+version = "0.1.0"
+authors = ["Joe Wass <joe@afandian.com>"]
+
+[dependencies]
