@@ -3,6 +3,12 @@
 Tools for working with ABC Notation files (http://abcnotation.com) created whilst making FolkTuneFinder.com.
 This is just a bit of fun to try out Rust language. It might go nowhere.
 
+## TODO
+
+ - Handle Windows newline characters.
+ - Handle escape sequences for LaTeX accents. 
+ - Handle escaped closing square brackets for inline fields.
+
 ## License
 
 This is open source software, and has the "MIT License", see LICENSE file. You're welcome to use this software
