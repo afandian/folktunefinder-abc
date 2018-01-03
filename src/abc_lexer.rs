@@ -92,6 +92,47 @@ fn read_until<'a>(
     }
 }
 
+/// Read an unsigned integer up to 99999999.
+fn read_number<'a>(ctx: Context<'a>) -> Result<(Context<'a>, u32), (Context, LexError)> {
+    // We're not going to read anything longer than this.
+    // Doing so would be unlikely and overflow a u32.
+    const MAX_CHARS : usize = 9;
+
+    let mut value : u32 = 0;
+    let mut length = 0;
+    for i in ctx.i .. ctx.l {
+        
+
+        // Check before we try to mutate value. This catches the overflow.
+        if length > MAX_CHARS {
+            return Err((ctx.skip(length), LexError::NumberTooLong));
+        }
+
+        match ctx.c[i] {
+            '0' => {value *= 10; value += 0}
+            '1' => {value *= 10; value += 1}
+            '2' => {value *= 10; value += 2}
+            '3' => {value *= 10; value += 3}
+            '4' => {value *= 10; value += 4}
+            '5' => {value *= 10; value += 5}
+            '6' => {value *= 10; value += 6}
+            '7' => {value *= 10; value += 7}
+            '8' => {value *= 10; value += 8}
+            '9' => {value *= 10; value += 9}
+            _ => break
+        }
+        
+        length += 1;
+    }
+
+    // We expect at least one digit.
+    if length == 0 {
+        Err((ctx.skip(length), LexError::ExpectedNumber))
+    } else {
+        Ok((ctx.skip(length), value))
+    }
+}
+
 /// Types of errors. These should be as specific as possible to give the best help.
 /// Avoiding generic 'expected char' type values.
 #[derive(Debug)]
@@ -104,6 +145,12 @@ enum LexError {
 
     /// We expected to find a colon character.
     ExpectedColon,
+
+    /// We expected to find a number here.
+    ExpectedNumber,
+
+    /// Number is too long.
+    NumberTooLong,
 
     /// In the tune header, we found a start of line that we couldn't recognise.
     UnexpectedHeaderLine,
@@ -135,7 +182,7 @@ enum T {
     // A useless character.
     Skip,
 
-    // Text fields
+    // Text header fields.
     Area(String),
     Book(String),
     Composer(String),
@@ -154,6 +201,7 @@ enum T {
 }
 
 /// Try to read a single T and return a new context.
+/// Note that there's a lot of aliasing of ctx in nested matches.
 fn read(ctx: Context) -> LexResult {
     // Need to peek 1 ahead. If we can't, we'are at the end.
     if !ctx.has(1) {
@@ -168,7 +216,9 @@ fn read(ctx: Context) -> LexResult {
                 // Text headers.
                 'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' | 'T' |
                 'W' | 'X' | 'Z' => {
-                    if ctx.has(2) && ctx.c[ctx.i + 1] == ':' {
+                    if !(ctx.has(2) && ctx.c[ctx.i + 1] == ':') {
+                        return LexResult::Error(ctx, LexError::ExpectedColon);
+                    } else {
                         match read_until(ctx, '\n') {
                             Ok((ctx, chars)) => {
                                 // Skip field label and colon.
@@ -201,31 +251,41 @@ fn read(ctx: Context) -> LexResult {
                             Err(ctx) => {
                                 return LexResult::Error(ctx, LexError::ExpectedDelimiter('\n'))
                             }
-                        }
-                    } else {
-                        return LexResult::Error(ctx, LexError::ExpectedColon);
+                        }                        
                     }
                 }
 
-                // Key signature.
-                // TODO remember to switch tune context.
-                'K' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                // Non-text headers.
+                // Grouped for handling code.
+                'K' | 'L' | 'M' | 'P' | 'Q' => {
+                    if !(ctx.has(2) && ctx.c[ctx.i + 1] == ':') {
+                        return LexResult::Error(ctx, LexError::ExpectedColon);
+                    } else {
+                        match first_char {
+                            // Key signature.
+                            // TODO remember to switch tune context.
+                            'K' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
-                // Default note length.
-                'L' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            // Default note length.
+                            'L' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
-                // Metre.
-                'M' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            // Metre.
+                            'M' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
-                // Parts.
-                'P' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            // Parts.
+                            'P' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
-                // Tempo
-                'Q' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            // Tempo
+                            'Q' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
-                // Anything else in the header is unrecognised.
+                            // This can only happen if the above cases get out of sync.
+                            _ => return LexResult::Error(ctx, LexError::ExpectedFieldType),
+                        }
+                    }
+                }
+
+                 // Anything else in the header is unrecognised.
                 _ => return LexResult::Error(ctx, LexError::UnexpectedHeaderLine),
-
             };
         }
 
@@ -526,6 +586,96 @@ Z:TRANSCRIPTION
                 );
             }
             _ => assert!(false, "No result"),
+        }
+    }
+
+    #[test]
+    fn read_number_test() {
+        //
+        // Match various inputs that terminate at the end of the input.
+        //
+
+        // Single digits.
+        match read_number(Context::new(&(string_to_vec(String::from("0"))))) {
+            Ok((_, val)) => assert_eq!(val, 0, "Can read single digit."),
+            _ => assert!(false)
+        }
+
+        match read_number(Context::new(&(string_to_vec(String::from("1"))))) {
+            Ok((_, val)) => assert_eq!(val, 1, "Can read single digit."),
+            _ => assert!(false)
+        }
+
+        // Longer.
+        match read_number(Context::new(&(string_to_vec(String::from("12345"))))) {
+            Ok((_, val)) => assert_eq!(val, 12345),
+            _ => assert!(false)
+        }
+
+        // Max length.
+        match read_number(Context::new(&(string_to_vec(String::from("123456789"))))) {
+            Ok((_, val)) => assert_eq!(val, 123456789),
+            _ => assert!(false)
+        }
+
+        //
+        // Match various inputs followed by something else.
+        //
+        match read_number(Context::new(&(string_to_vec(String::from("0X"))))) {
+            Ok((ctx, val)) => {
+                assert_eq!(val, 0, "Can read single digit.");
+                assert_eq!(ctx.i, 1, "Index at next character after number.");
+            }
+
+            _ => assert!(false)
+        }
+
+        match read_number(Context::new(&(string_to_vec(String::from("1X"))))) {
+            Ok((ctx, val)) => {
+                assert_eq!(val, 1, "Can read single digit.");
+                assert_eq!(ctx.i, 1, "Index at next character after number.");
+            }
+            _ => assert!(false)
+        }
+
+        // Longer.
+        match read_number(Context::new(&(string_to_vec(String::from("12345X"))))) {
+            Ok((ctx, val)) => {
+                assert_eq!(val, 12345, "Can read longer number.");
+                assert_eq!(ctx.i, 5, "Index at next character after number.");
+            }
+            _ => assert!(false)
+        }
+
+        // Max length.
+        match read_number(Context::new(&(string_to_vec(String::from("123456789X"))))) {
+            Ok((ctx, val)) => {
+                assert_eq!(val, 123456789, "Can read max length number.");
+                assert_eq!(ctx.i, 9, "Index at next character after number.");
+            }
+            _ => assert!(false)
+        }
+
+        //
+        // Errors
+        //
+
+        // Too long to end of input.
+        match read_number(Context::new(&(string_to_vec(String::from("12345678901"))))) {
+            Err((_, LexError::NumberTooLong)) => assert!(true, "Should fail with NumberTooLong"),
+            _ => assert!(false)
+        }
+
+        // No input.
+        match read_number(Context::new(&(string_to_vec(String::from(""))))) {
+            Err((_, LexError::ExpectedNumber)) => assert!(true, "Should fail with ExpectedNumber"),
+            _ => assert!(false)
+        }
+
+        // Not a number.
+        match read_number(Context::new(&(string_to_vec(String::from("five"))))) {
+            Err((_, LexError::ExpectedNumber)) => assert!(true, "Should fail with ExpectedNumber"),
+            _ => assert!(false)
         }
     }
 
