@@ -4,7 +4,7 @@
 ///! the supplied string.
 
 /// Which bit of the tune are we in?
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 enum TuneContext {
     Header,
     Body,
@@ -12,7 +12,7 @@ enum TuneContext {
 
 /// Context required to parse an ABC String.
 /// Context object is immutable for simpler state and testing.
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 struct Context<'a> {
     /// The ABC tune content as a vector of potentially multibyte characters.
     /// Stored as a slice of chars so we can peek.
@@ -45,10 +45,10 @@ impl<'a> Context<'a> {
         self.i + chars <= self.l
     }
 
-    /// Copy with the new field delimiter.
-    fn with_tune_context(&self, new_val: TuneContext) -> Context<'a> {
+    /// Move to body state.
+    fn in_body(&self) -> Context<'a> {
         Context {
-            tune_context: new_val,
+            tune_context: TuneContext::Body,
             ..*self
         }
     }
@@ -61,31 +61,76 @@ impl<'a> Context<'a> {
 }
 
 /// Read until delmiter character.
-fn read_until<'a>(ctx: Context<'a>, delimiter: char) -> Option<(Context<'a>, &'a [char])> {
+fn read_until<'a>(
+    ctx: Context<'a>,
+    delimiter: char,
+) -> Result<(Context<'a>, &'a [char]), Context<'a>> {
     // Find the index of the first delimiter.
     let delimiter_char = ctx.c[ctx.i..].iter().enumerate().take_while(
         |&(_, c)| c != &delimiter,
     );
 
     if let Some((length, _)) = delimiter_char.last() {
-        let value = &ctx.c[ctx.i..ctx.i + length + 1];
-        return Some((
-            Context {
-                i: ctx.i + length + 2,
-                ..ctx
-            },
-            value,
-        ));
+        // If we reached the end of the input and there was no delimiter, error.
+        if ctx.i + length + 1 >= ctx.l || ctx.c[ctx.i + length + 1] != delimiter {
+            Err(ctx)
+        } else {
+            // Retrieve as subslice of original.
+            let value = &ctx.c[ctx.i..ctx.i + length + 1];
+            Ok((
+                Context {
+                    i: ctx.i + length + 2,
+                    ..ctx
+                },
+                value,
+            ))
+        }
+    } else {
+        // If there was no delimiter, end of story.
+        // Return the context in case it's needed for error reporting.
+        Err(ctx)
     }
+}
 
-    // If there was no delimiter, end of story.
-    return None;
+/// Types of errors. These should be as specific as possible to give the best help.
+/// Avoiding generic 'expected char' type values.
+#[derive(Debug)]
+enum ParseError {
+    /// We expected to find a delimiter at some point after the current position but couldn't.
+    ExpectedDelimiter(char),
+
+    /// We expected a field type (e.g. "T") but didn't get one.
+    ExpectedFieldType,
+
+    /// We expected to find a colon character.
+    ExpectedColon,
+
+    /// In the tune header, we found a start of line that we couldn't recognise.
+    UnexpectedHeaderLine,
+
+    /// In the tune body, where we expect the start of a token, we got a character we didn't expect.
+    UnexpectedBodyChar,
+
+    /// Feature not implemented yet.
+    /// Should have no tests for this.
+    /// TODO remove this when feautre complete.
+    UnimplementedError,
+}
+
+// A glorified Option type that allows encoding errors.
+#[derive(Debug)]
+enum ParseResult<'a> {
+    Token(Context<'a>, AbcToken),
+    Error(Context<'a>, ParseError),
 }
 
 #[derive(Debug, PartialEq, PartialOrd)]
 enum AbcToken {
     Terminal,
     Newline,
+
+    // A useless character.
+    Skip,
 
     // Text fields
     Area(String),
@@ -106,65 +151,170 @@ enum AbcToken {
 }
 
 /// Try to read a single AbcToken and return a new context.
-fn read(ctx: Context) -> Option<(Context, AbcToken)> {
+fn read(ctx: Context) -> ParseResult {
     // Need to peek 1 ahead. If we can't, we'are at the end.
     if !ctx.has(1) {
-        return Some((ctx, AbcToken::Terminal));
+        return ParseResult::Token(ctx, AbcToken::Terminal);
     }
+
+    let first_char = ctx.c[ctx.i];
 
     match ctx.tune_context {
         TuneContext::Header => {
-            let first_char = ctx.c[ctx.i];
-
             match first_char {
-                '\n' => return Some((ctx.skip(1), AbcToken::Newline)),
-
+                // Text headers.
                 'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' | 'T' |
                 'W' | 'X' | 'Z' => {
                     if ctx.has(2) && ctx.c[ctx.i + 1] == ':' {
                         match read_until(ctx, '\n') {
-                            Some((ctx, chars)) => {
+                            Ok((ctx, chars)) => {
                                 // Skip field label and colon.
-                                let value = chars.iter().skip(2).collect();
+                                let value: String = chars.iter().skip(2).collect();
+
+                                // Strip whitespace including leading space and trailing newline
+                                let value = value.trim().to_string();
 
                                 match first_char {
-                                    'A' => return Some((ctx, AbcToken::Area(value))),
-                                    'B' => return Some((ctx, AbcToken::Book(value))),
-                                    'C' => return Some((ctx, AbcToken::Composer(value))),
-                                    'D' => return Some((ctx, AbcToken::Discography(value))),
-                                    'F' => return Some((ctx, AbcToken::Filename(value))),
-                                    'G' => return Some((ctx, AbcToken::Group(value))),
-                                    'H' => return Some((ctx, AbcToken::History(value))),
-                                    'I' => return Some((ctx, AbcToken::Information(value))),
-                                    'N' => return Some((ctx, AbcToken::Notes(value))),
-                                    'O' => return Some((ctx, AbcToken::Origin(value))),
-                                    'S' => return Some((ctx, AbcToken::Source(value))),
-                                    'T' => return Some((ctx, AbcToken::Title(value))),
-                                    'W' => return Some((ctx, AbcToken::Words(value))),
-                                    'X' => return Some((ctx, AbcToken::X(value))),
-                                    'Z' => return Some((ctx, AbcToken::Transcription(value))),
-                                    _ => (),
+                                    'A' => return ParseResult::Token(ctx, AbcToken::Area(value)),
+                                    'B' => return ParseResult::Token(ctx, AbcToken::Book(value)),
+                                    'C' => {
+                                        return ParseResult::Token(ctx, AbcToken::Composer(value))
+                                    }
+                                    'D' => {
+                                        return ParseResult::Token(ctx, AbcToken::Discography(value))
+                                    }
+                                    'F' => {
+                                        return ParseResult::Token(ctx, AbcToken::Filename(value))
+                                    }
+                                    'G' => return ParseResult::Token(ctx, AbcToken::Group(value)),
+                                    'H' => return ParseResult::Token(ctx, AbcToken::History(value)),
+                                    'I' => {
+                                        return ParseResult::Token(ctx, AbcToken::Information(value))
+                                    }
+                                    'N' => return ParseResult::Token(ctx, AbcToken::Notes(value)),
+                                    'O' => return ParseResult::Token(ctx, AbcToken::Origin(value)),
+                                    'S' => return ParseResult::Token(ctx, AbcToken::Source(value)),
+                                    'T' => return ParseResult::Token(ctx, AbcToken::Title(value)),
+                                    'W' => return ParseResult::Token(ctx, AbcToken::Words(value)),
+                                    'X' => return ParseResult::Token(ctx, AbcToken::X(value)),
+                                    'Z' => {
+                                        return ParseResult::Token(
+                                            ctx,
+                                            AbcToken::Transcription(value),
+                                        )
+                                    }
+
+                                    // This can only happen if the above character switches get out of sync.
+                                    _ => {
+                                        return ParseResult::Error(
+                                            ctx,
+                                            ParseError::ExpectedFieldType,
+                                        )
+                                    }
                                 }
                             }
-                            _ => (),
+                            Err(ctx) => {
+                                return ParseResult::Error(ctx, ParseError::ExpectedDelimiter('\n'))
+                            }
                         }
+                    } else {
+                        return ParseResult::Error(ctx, ParseError::ExpectedColon);
                     }
-
                 }
 
-                _ => (),
+                // Key signature.
+                // TODO remember to switch tune context.
+                'K' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+
+                // Default note length.
+                'L' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+
+                // Metre.
+                'M' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+
+                // Parts.
+                'P' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+
+                // Tempo
+                'Q' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+
+                // Anything else in the header is unrecognised.
+                _ => return ParseResult::Error(ctx, ParseError::UnexpectedHeaderLine),
 
             };
         }
 
         TuneContext::Body => {
-            // TODO
+            match first_char {
+                // Better to lex these individually so that we account for each character,
+                // then ignore the Skips later.
+                '\n' => return ParseResult::Token(ctx.skip(1), AbcToken::Newline),
+                '\r' => return ParseResult::Token(ctx.skip(1), AbcToken::Skip),
 
+                // TODO all tune body entities.
+                _ => return ParseResult::Error(ctx, ParseError::UnexpectedBodyChar),
+            }
         }
     };
+}
 
 
-    return None;
+/// A stateful lexer for an ABC string.
+/// Implements Iterator.
+struct Lexer<'a> {
+    // content: &'a[char],
+    context: Context<'a>,
+    error: Option<(Context<'a>, ParseError)>,
+}
+
+impl<'a> Lexer<'a> {
+    fn new(content: &'a [char]) -> Lexer<'a> {
+        let context = Context::new(&content);
+
+        // The error we encountered.
+        // Becuase iteration stops at the first error, we only need to store one.
+        let error = None;
+
+        Lexer {
+            // content,
+            context,
+            error,
+        }
+    }
+
+    // Skip into the body. For testing only.
+    fn in_body(mut self) -> Lexer<'a> {
+        self.context = self.context.in_body();
+        self
+    }
+}
+
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = AbcToken;
+
+    fn next(&mut self) -> Option<AbcToken> {
+        // Take a temporary clone of self.context so it can be consumed.
+        // TODO could read() work with a ref?
+        match read(self.context.clone()) {
+            ParseResult::Token(new_context, token) => {
+                self.context = new_context;
+
+                match token {
+                    // Terminal token means stop iterating.
+                    AbcToken::Terminal => None,
+
+                    // Anything else, return and keep iterating.
+                    _ => Some(token),
+                }
+            }
+            ParseResult::Error(new_context, error) => {
+                // An error stops iteration.
+                self.error = Some((new_context, error));
+                None
+            }
+        }
+    }
 }
 
 fn string_to_vec(input: String) -> Vec<char> {
@@ -233,7 +383,7 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
 
     #[test]
     fn read_text_headers_test() {
-        let input = &(string_to_vec(String::from(
+        let input = &(string_to_vec(
             "A:AREA
 B:BOOK
 C:COMPOSER
@@ -248,63 +398,134 @@ S:SOURCE
 T:TITLE
 W:WORDS
 X:100
-Z:TRANSCRIPTION",
-        )));
+Z:TRANSCRIPTION
+"
+                .to_string(),
+        ));
 
-        let context = Context::new(input);
+        let tokens = Lexer::new(input).collect::<Vec<AbcToken>>();
 
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Area(String::from("AREA")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Book(String::from("BOOK")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Composer(String::from("COMPOSER")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Discography(String::from("DISCOGRAPHY")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Filename(String::from("FILENAME")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Group(String::from("GROUP")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::History(String::from("HISTORY")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Information(String::from("INFO")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Notes(String::from("NOTES")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Origin(String::from("ORIGIN")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Source(String::from("SOURCE")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Title(String::from("TITLE")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Words(String::from("WORDS")));
-
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::X(String::from("100")));
-
-        let (context, result) = read(context).unwrap();
         assert_eq!(
-            result,
-            AbcToken::Transcription(String::from("TRANSCRIPTION"))
+            tokens,
+            vec![
+                AbcToken::Area("AREA".to_string()),
+                AbcToken::Book("BOOK".to_string()),
+                AbcToken::Composer("COMPOSER".to_string()),
+                AbcToken::Discography("DISCOGRAPHY".to_string()),
+                AbcToken::Filename("FILENAME".to_string()),
+                AbcToken::Group("GROUP".to_string()),
+                AbcToken::History("HISTORY".to_string()),
+                AbcToken::Information("INFO".to_string()),
+                AbcToken::Notes("NOTES".to_string()),
+                AbcToken::Origin("ORIGIN".to_string()),
+                AbcToken::Source("SOURCE".to_string()),
+                AbcToken::Title("TITLE".to_string()),
+                AbcToken::Words("WORDS".to_string()),
+                AbcToken::X("100".to_string()),
+                AbcToken::Transcription("TRANSCRIPTION".to_string()),
+            ]
         );
 
-        let (context, result) = read(context).unwrap();
-        assert_eq!(result, AbcToken::Terminal);
+        // Make sure we can parse Windows and Unix line endings.
+        let input = &(string_to_vec("T:TITLE\r\nB:BOOK\n".to_string()));
+
+        let tokens = Lexer::new(input).collect::<Vec<AbcToken>>();
+
+        assert_eq!(
+            tokens,
+            vec![
+                AbcToken::Title("TITLE".to_string()),
+                AbcToken::Book("BOOK".to_string()),
+            ]
+        );
     }
 
+    /// Errors for reading headers.
+    #[test]
+    fn header_errs() {
+        // Unrecognised start of header.
+        match read(Context::new(&(string_to_vec("Y:x\n".to_string())))) {
+            ParseResult::Error(_, ParseError::UnexpectedHeaderLine) => {
+                assert!(
+                    true,
+                    "Should get UnexpectedHeaderLine when an unrecognised header line started"
+                )
+            }
+            _ => assert!(false),
+        }
+
+        // Good looking header but unrecognised field name.
+        match read(Context::new(&(string_to_vec("Y:What\n".to_string())))) {
+            ParseResult::Error(_, ParseError::UnexpectedHeaderLine) => {
+                assert!(
+                    true,
+                    "Should get UnexpectedHeaderLine when an unrecognised field type"
+                )
+            }
+            _ => assert!(false),
+        }
+
+        // No delimiter (i.e. newline) for field.
+        match read(Context::new(&(string_to_vec("T:NeverEnding".to_string())))) {
+            ParseResult::Error(_, ParseError::ExpectedDelimiter('\n')) => {
+                assert!(
+                    true,
+                    "Should get ExpectedDelimiter there isn't a newline available"
+                )
+            }
+            _ => assert!(false),
+        }
+
+        // Header without colon.
+        match read(Context::new(&(string_to_vec("TNoColon".to_string())))) {
+            ParseResult::Error(_, ParseError::ExpectedColon) => {
+                assert!(
+                    true,
+                    "Should get ExpectedColon there isn't a newline available"
+                )
+            }
+            _ => assert!(false),
+        }
+    }
+
+    /// Errors for reading the tune body.
+    #[test]
+    fn body_errs() {
+        // Unexpected character at start of an entity.
+        match read(Context::new(&(string_to_vec("x".to_string()))).in_body()) {
+            ParseResult::Error(_, ParseError::UnexpectedBodyChar) => {
+                assert!(
+                    true,
+                    "Should get ExpectedColon there isn't a newline available"
+                )
+            }
+            _ => assert!(false),
+        }
+    }
+
+    /// Tests for simple entities in the tune body.
+    #[test]
+    fn body_simple_entities() {
+        // End of file in tune body.
+        match read(Context::new(&(string_to_vec("".to_string()))).in_body()) {
+            ParseResult::Token(_, AbcToken::Terminal) => {
+                assert!(
+                    true,
+                    "Should lex terminal if end of string in body section."
+                )
+            }
+            _ => assert!(false),
+        }
+
+        // End of file in tune body.
+        assert_eq!(
+            Lexer::new(&(string_to_vec("\r\n".to_string())))
+                .in_body()
+                .collect::<Vec<AbcToken>>(),
+            vec![AbcToken::Skip, AbcToken::Newline]
+        )
+
+    }
 
     #[test]
     fn read_until_test() {
@@ -314,7 +535,7 @@ Z:TRANSCRIPTION",
         let result = read_until(context, '\n');
 
         match result {
-            Some((ctx, value)) => {
+            Ok((ctx, value)) => {
                 assert_eq!(value, &['T', 'h', 'i', 's']);
                 assert_eq!(
                     ctx.i,
@@ -326,6 +547,18 @@ Z:TRANSCRIPTION",
         }
     }
 
+    #[test]
+    fn read_until_no_delimiter() {
+        let input = &(string_to_vec(String::from("This and that")));
+        let context = Context::new(input);
+
+        let result = read_until(context, '\n');
+
+        match result {
+            Err(_) => assert!(true, "No closing delimiter should result in error."),
+            Ok(_) => assert!(false, "No closing delimiter not return a value."),
+        }
+    }
 
     // Tests for read()
     #[test]
@@ -334,7 +567,9 @@ Z:TRANSCRIPTION",
         let context = Context::new(empty);
 
         match read(context) {
-            Some((_, AbcToken::Terminal)) => assert!(true, "Empty results in Terminal character"),
+            ParseResult::Token(_, AbcToken::Terminal) => {
+                assert!(true, "Empty results in Terminal character")
+            }
             _ => assert!(false, "Terminal should be returned"),
         }
     }

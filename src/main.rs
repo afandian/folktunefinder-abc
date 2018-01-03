@@ -11,6 +11,4 @@ mod viz;
 
 fn main() {
     println!("Hello, world!");
-
-    geometry::this();
 }
