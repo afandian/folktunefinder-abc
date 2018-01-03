@@ -10,7 +10,7 @@ enum TuneContext {
     Body,
 }
 
-/// Context required to parse an ABC String.
+/// Context required to lex an ABC String.
 /// Context object is immutable for simpler state and testing.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 struct Context<'a> {
@@ -95,7 +95,7 @@ fn read_until<'a>(
 /// Types of errors. These should be as specific as possible to give the best help.
 /// Avoiding generic 'expected char' type values.
 #[derive(Debug)]
-enum ParseError {
+enum LexError {
     /// We expected to find a delimiter at some point after the current position but couldn't.
     ExpectedDelimiter(char),
 
@@ -117,15 +117,18 @@ enum ParseError {
     UnimplementedError,
 }
 
-// A glorified Option type that allows encoding errors.
+/// A glorified Option type that allows encoding errors.
 #[derive(Debug)]
-enum ParseResult<'a> {
-    Token(Context<'a>, AbcToken),
-    Error(Context<'a>, ParseError),
+enum LexResult<'a> {
+    /// Token. Shortened as it's used a lot.
+    T(Context<'a>, T),
+    Error(Context<'a>, LexError),
 }
 
+/// ABC Token.
+/// Shortened as it's used a lot.
 #[derive(Debug, PartialEq, PartialOrd)]
-enum AbcToken {
+enum T {
     Terminal,
     Newline,
 
@@ -150,11 +153,11 @@ enum AbcToken {
     Transcription(String),
 }
 
-/// Try to read a single AbcToken and return a new context.
-fn read(ctx: Context) -> ParseResult {
+/// Try to read a single T and return a new context.
+fn read(ctx: Context) -> LexResult {
     // Need to peek 1 ahead. If we can't, we'are at the end.
     if !ctx.has(1) {
-        return ParseResult::Token(ctx, AbcToken::Terminal);
+        return LexResult::T(ctx, T::Terminal);
     }
 
     let first_char = ctx.c[ctx.i];
@@ -175,71 +178,53 @@ fn read(ctx: Context) -> ParseResult {
                                 let value = value.trim().to_string();
 
                                 match first_char {
-                                    'A' => return ParseResult::Token(ctx, AbcToken::Area(value)),
-                                    'B' => return ParseResult::Token(ctx, AbcToken::Book(value)),
-                                    'C' => {
-                                        return ParseResult::Token(ctx, AbcToken::Composer(value))
-                                    }
-                                    'D' => {
-                                        return ParseResult::Token(ctx, AbcToken::Discography(value))
-                                    }
-                                    'F' => {
-                                        return ParseResult::Token(ctx, AbcToken::Filename(value))
-                                    }
-                                    'G' => return ParseResult::Token(ctx, AbcToken::Group(value)),
-                                    'H' => return ParseResult::Token(ctx, AbcToken::History(value)),
-                                    'I' => {
-                                        return ParseResult::Token(ctx, AbcToken::Information(value))
-                                    }
-                                    'N' => return ParseResult::Token(ctx, AbcToken::Notes(value)),
-                                    'O' => return ParseResult::Token(ctx, AbcToken::Origin(value)),
-                                    'S' => return ParseResult::Token(ctx, AbcToken::Source(value)),
-                                    'T' => return ParseResult::Token(ctx, AbcToken::Title(value)),
-                                    'W' => return ParseResult::Token(ctx, AbcToken::Words(value)),
-                                    'X' => return ParseResult::Token(ctx, AbcToken::X(value)),
-                                    'Z' => {
-                                        return ParseResult::Token(
-                                            ctx,
-                                            AbcToken::Transcription(value),
-                                        )
-                                    }
+                                    'A' => return LexResult::T(ctx, T::Area(value)),
+                                    'B' => return LexResult::T(ctx, T::Book(value)),
+                                    'C' => return LexResult::T(ctx, T::Composer(value)),
+                                    'D' => return LexResult::T(ctx, T::Discography(value)),
+                                    'F' => return LexResult::T(ctx, T::Filename(value)),
+                                    'G' => return LexResult::T(ctx, T::Group(value)),
+                                    'H' => return LexResult::T(ctx, T::History(value)),
+                                    'I' => return LexResult::T(ctx, T::Information(value)),
+                                    'N' => return LexResult::T(ctx, T::Notes(value)),
+                                    'O' => return LexResult::T(ctx, T::Origin(value)),
+                                    'S' => return LexResult::T(ctx, T::Source(value)),
+                                    'T' => return LexResult::T(ctx, T::Title(value)),
+                                    'W' => return LexResult::T(ctx, T::Words(value)),
+                                    'X' => return LexResult::T(ctx, T::X(value)),
+                                    'Z' => return LexResult::T(ctx, T::Transcription(value)),
 
-                                    // This can only happen if the above character switches get out of sync.
-                                    _ => {
-                                        return ParseResult::Error(
-                                            ctx,
-                                            ParseError::ExpectedFieldType,
-                                        )
-                                    }
+                                    // This can only happen if the above cases get out of sync.
+                                    _ => return LexResult::Error(ctx, LexError::ExpectedFieldType),
                                 }
                             }
                             Err(ctx) => {
-                                return ParseResult::Error(ctx, ParseError::ExpectedDelimiter('\n'))
+                                return LexResult::Error(ctx, LexError::ExpectedDelimiter('\n'))
                             }
                         }
                     } else {
-                        return ParseResult::Error(ctx, ParseError::ExpectedColon);
+                        return LexResult::Error(ctx, LexError::ExpectedColon);
                     }
                 }
 
                 // Key signature.
                 // TODO remember to switch tune context.
-                'K' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+                'K' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                 // Default note length.
-                'L' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+                'L' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                 // Metre.
-                'M' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+                'M' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                 // Parts.
-                'P' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+                'P' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                 // Tempo
-                'Q' => return ParseResult::Error(ctx, ParseError::UnimplementedError),
+                'Q' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                 // Anything else in the header is unrecognised.
-                _ => return ParseResult::Error(ctx, ParseError::UnexpectedHeaderLine),
+                _ => return LexResult::Error(ctx, LexError::UnexpectedHeaderLine),
 
             };
         }
@@ -248,11 +233,11 @@ fn read(ctx: Context) -> ParseResult {
             match first_char {
                 // Better to lex these individually so that we account for each character,
                 // then ignore the Skips later.
-                '\n' => return ParseResult::Token(ctx.skip(1), AbcToken::Newline),
-                '\r' => return ParseResult::Token(ctx.skip(1), AbcToken::Skip),
+                '\n' => return LexResult::T(ctx.skip(1), T::Newline),
+                '\r' => return LexResult::T(ctx.skip(1), T::Skip),
 
                 // TODO all tune body entities.
-                _ => return ParseResult::Error(ctx, ParseError::UnexpectedBodyChar),
+                _ => return LexResult::Error(ctx, LexError::UnexpectedBodyChar),
             }
         }
     };
@@ -264,7 +249,7 @@ fn read(ctx: Context) -> ParseResult {
 struct Lexer<'a> {
     // content: &'a[char],
     context: Context<'a>,
-    error: Option<(Context<'a>, ParseError)>,
+    error: Option<(Context<'a>, LexError)>,
 }
 
 impl<'a> Lexer<'a> {
@@ -291,24 +276,24 @@ impl<'a> Lexer<'a> {
 
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = AbcToken;
+    type Item = T;
 
-    fn next(&mut self) -> Option<AbcToken> {
+    fn next(&mut self) -> Option<T> {
         // Take a temporary clone of self.context so it can be consumed.
         // TODO could read() work with a ref?
         match read(self.context.clone()) {
-            ParseResult::Token(new_context, token) => {
+            LexResult::T(new_context, token) => {
                 self.context = new_context;
 
                 match token {
                     // Terminal token means stop iterating.
-                    AbcToken::Terminal => None,
+                    T::Terminal => None,
 
                     // Anything else, return and keep iterating.
                     _ => Some(token),
                 }
             }
-            ParseResult::Error(new_context, error) => {
+            LexResult::Error(new_context, error) => {
                 // An error stops iteration.
                 self.error = Some((new_context, error));
                 None
@@ -403,40 +388,37 @@ Z:TRANSCRIPTION
                 .to_string(),
         ));
 
-        let tokens = Lexer::new(input).collect::<Vec<AbcToken>>();
+        let tokens = Lexer::new(input).collect::<Vec<T>>();
 
         assert_eq!(
             tokens,
             vec![
-                AbcToken::Area("AREA".to_string()),
-                AbcToken::Book("BOOK".to_string()),
-                AbcToken::Composer("COMPOSER".to_string()),
-                AbcToken::Discography("DISCOGRAPHY".to_string()),
-                AbcToken::Filename("FILENAME".to_string()),
-                AbcToken::Group("GROUP".to_string()),
-                AbcToken::History("HISTORY".to_string()),
-                AbcToken::Information("INFO".to_string()),
-                AbcToken::Notes("NOTES".to_string()),
-                AbcToken::Origin("ORIGIN".to_string()),
-                AbcToken::Source("SOURCE".to_string()),
-                AbcToken::Title("TITLE".to_string()),
-                AbcToken::Words("WORDS".to_string()),
-                AbcToken::X("100".to_string()),
-                AbcToken::Transcription("TRANSCRIPTION".to_string()),
+                T::Area("AREA".to_string()),
+                T::Book("BOOK".to_string()),
+                T::Composer("COMPOSER".to_string()),
+                T::Discography("DISCOGRAPHY".to_string()),
+                T::Filename("FILENAME".to_string()),
+                T::Group("GROUP".to_string()),
+                T::History("HISTORY".to_string()),
+                T::Information("INFO".to_string()),
+                T::Notes("NOTES".to_string()),
+                T::Origin("ORIGIN".to_string()),
+                T::Source("SOURCE".to_string()),
+                T::Title("TITLE".to_string()),
+                T::Words("WORDS".to_string()),
+                T::X("100".to_string()),
+                T::Transcription("TRANSCRIPTION".to_string()),
             ]
         );
 
-        // Make sure we can parse Windows and Unix line endings.
+        // Make sure we can lex Windows and Unix line endings.
         let input = &(string_to_vec("T:TITLE\r\nB:BOOK\n".to_string()));
 
-        let tokens = Lexer::new(input).collect::<Vec<AbcToken>>();
+        let tokens = Lexer::new(input).collect::<Vec<T>>();
 
         assert_eq!(
             tokens,
-            vec![
-                AbcToken::Title("TITLE".to_string()),
-                AbcToken::Book("BOOK".to_string()),
-            ]
+            vec![T::Title("TITLE".to_string()), T::Book("BOOK".to_string())]
         );
     }
 
@@ -445,7 +427,7 @@ Z:TRANSCRIPTION
     fn header_errs() {
         // Unrecognised start of header.
         match read(Context::new(&(string_to_vec("Y:x\n".to_string())))) {
-            ParseResult::Error(_, ParseError::UnexpectedHeaderLine) => {
+            LexResult::Error(_, LexError::UnexpectedHeaderLine) => {
                 assert!(
                     true,
                     "Should get UnexpectedHeaderLine when an unrecognised header line started"
@@ -456,7 +438,7 @@ Z:TRANSCRIPTION
 
         // Good looking header but unrecognised field name.
         match read(Context::new(&(string_to_vec("Y:What\n".to_string())))) {
-            ParseResult::Error(_, ParseError::UnexpectedHeaderLine) => {
+            LexResult::Error(_, LexError::UnexpectedHeaderLine) => {
                 assert!(
                     true,
                     "Should get UnexpectedHeaderLine when an unrecognised field type"
@@ -467,7 +449,7 @@ Z:TRANSCRIPTION
 
         // No delimiter (i.e. newline) for field.
         match read(Context::new(&(string_to_vec("T:NeverEnding".to_string())))) {
-            ParseResult::Error(_, ParseError::ExpectedDelimiter('\n')) => {
+            LexResult::Error(_, LexError::ExpectedDelimiter('\n')) => {
                 assert!(
                     true,
                     "Should get ExpectedDelimiter there isn't a newline available"
@@ -478,7 +460,7 @@ Z:TRANSCRIPTION
 
         // Header without colon.
         match read(Context::new(&(string_to_vec("TNoColon".to_string())))) {
-            ParseResult::Error(_, ParseError::ExpectedColon) => {
+            LexResult::Error(_, LexError::ExpectedColon) => {
                 assert!(
                     true,
                     "Should get ExpectedColon there isn't a newline available"
@@ -493,7 +475,7 @@ Z:TRANSCRIPTION
     fn body_errs() {
         // Unexpected character at start of an entity.
         match read(Context::new(&(string_to_vec("x".to_string()))).in_body()) {
-            ParseResult::Error(_, ParseError::UnexpectedBodyChar) => {
+            LexResult::Error(_, LexError::UnexpectedBodyChar) => {
                 assert!(
                     true,
                     "Should get ExpectedColon there isn't a newline available"
@@ -508,7 +490,7 @@ Z:TRANSCRIPTION
     fn body_simple_entities() {
         // End of file in tune body.
         match read(Context::new(&(string_to_vec("".to_string()))).in_body()) {
-            ParseResult::Token(_, AbcToken::Terminal) => {
+            LexResult::T(_, T::Terminal) => {
                 assert!(
                     true,
                     "Should lex terminal if end of string in body section."
@@ -521,8 +503,8 @@ Z:TRANSCRIPTION
         assert_eq!(
             Lexer::new(&(string_to_vec("\r\n".to_string())))
                 .in_body()
-                .collect::<Vec<AbcToken>>(),
-            vec![AbcToken::Skip, AbcToken::Newline]
+                .collect::<Vec<T>>(),
+            vec![T::Skip, T::Newline]
         )
 
     }
@@ -567,9 +549,7 @@ Z:TRANSCRIPTION
         let context = Context::new(empty);
 
         match read(context) {
-            ParseResult::Token(_, AbcToken::Terminal) => {
-                assert!(true, "Empty results in Terminal character")
-            }
+            LexResult::T(_, T::Terminal) => assert!(true, "Empty results in Terminal character"),
             _ => assert!(false, "Terminal should be returned"),
         }
     }
