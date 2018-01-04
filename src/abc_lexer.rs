@@ -102,30 +102,60 @@ fn read_until<'a>(
 fn read_number<'a>(ctx: Context<'a>) -> Result<(Context<'a>, u32), (Context, LexError)> {
     // We're not going to read anything longer than this.
     // Doing so would be unlikely and overflow a u32.
-    const MAX_CHARS : usize = 8;
+    const MAX_CHARS: usize = 8;
 
-    let mut value : u32 = 0;
+    let mut value: u32 = 0;
     let mut length = 0;
-    for i in ctx.i .. ctx.l {
+    for i in ctx.i..ctx.l {
         // Check before we try to mutate value. This catches the overflow.
         if length >= MAX_CHARS {
             return Err((ctx.skip(length), LexError::NumberTooLong));
         }
 
         match ctx.c[i] {
-            '0' => {value *= 10; value += 0}
-            '1' => {value *= 10; value += 1}
-            '2' => {value *= 10; value += 2}
-            '3' => {value *= 10; value += 3}
-            '4' => {value *= 10; value += 4}
-            '5' => {value *= 10; value += 5}
-            '6' => {value *= 10; value += 6}
-            '7' => {value *= 10; value += 7}
-            '8' => {value *= 10; value += 8}
-            '9' => {value *= 10; value += 9}
-            _ => break
+            '0' => {
+                value *= 10;
+                value += 0
+            }
+            '1' => {
+                value *= 10;
+                value += 1
+            }
+            '2' => {
+                value *= 10;
+                value += 2
+            }
+            '3' => {
+                value *= 10;
+                value += 3
+            }
+            '4' => {
+                value *= 10;
+                value += 4
+            }
+            '5' => {
+                value *= 10;
+                value += 5
+            }
+            '6' => {
+                value *= 10;
+                value += 6
+            }
+            '7' => {
+                value *= 10;
+                value += 7
+            }
+            '8' => {
+                value *= 10;
+                value += 8
+            }
+            '9' => {
+                value *= 10;
+                value += 9
+            }
+            _ => break,
         }
-        
+
         length += 1;
     }
 
@@ -139,7 +169,7 @@ fn read_number<'a>(ctx: Context<'a>) -> Result<(Context<'a>, u32), (Context, Lex
 
 /// Lex a metre declaration, e.g. "2/4" or "C|".
 fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
-    
+
     // First we need to read the content of the header to the end of the header value.
     match read_until(ctx, delimiter) {
         Err(ctx) => LexResult::Error(ctx, LexError::PrematureEnd(During::Metre)),
@@ -153,8 +183,8 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 
                 // Because we need to work in the original context for parsing numbers,
                 // rewind the context back the length of the slice.
-                let ctx = ctx.rewind(content.len()+1);
-                
+                let ctx = ctx.rewind(content.len() + 1);
+
                 // It's a numerical metre.
                 match read_number(ctx) {
                     Err((ctx, err)) => LexResult::Error(ctx, err),
@@ -167,8 +197,10 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                             let ctx = ctx.skip(1);
 
                             match read_number(ctx) {
-                               Err((ctx, err)) => LexResult::Error(ctx, err),
-                               Ok((ctx, denomenator)) => LexResult::T(ctx, T::Metre(numerator, denomenator))
+                                Err((ctx, err)) => LexResult::Error(ctx, err),
+                                Ok((ctx, denomenator)) => {
+                                    LexResult::T(ctx, T::Metre(numerator, denomenator))
+                                }
                             }
                         }
 
@@ -184,7 +216,7 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 // The activity we were undertaking at the time when something happened.
 #[derive(Debug)]
 enum During {
-    Metre
+    Metre,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
@@ -314,7 +346,7 @@ fn read(ctx: Context) -> LexResult {
                             Err(ctx) => {
                                 return LexResult::Error(ctx, LexError::ExpectedDelimiter('\n'))
                             }
-                        }                        
+                        }
                     }
                 }
 
@@ -350,7 +382,7 @@ fn read(ctx: Context) -> LexResult {
                     }
                 }
 
-                 // Anything else in the header is unrecognised.
+                // Anything else in the header is unrecognised.
                 _ => return LexResult::Error(ctx, LexError::UnexpectedHeaderLine),
             };
         }
@@ -664,24 +696,24 @@ M:2/4
         // Single digits.
         match read_number(Context::new(&(string_to_vec(String::from("0"))))) {
             Ok((_, val)) => assert_eq!(val, 0, "Can read single digit."),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         match read_number(Context::new(&(string_to_vec(String::from("1"))))) {
             Ok((_, val)) => assert_eq!(val, 1, "Can read single digit."),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // Longer.
         match read_number(Context::new(&(string_to_vec(String::from("12345"))))) {
             Ok((_, val)) => assert_eq!(val, 12345),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // Max length.
         match read_number(Context::new(&(string_to_vec(String::from("12345678"))))) {
             Ok((_, val)) => assert_eq!(val, 12345678),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         //
@@ -693,7 +725,7 @@ M:2/4
                 assert_eq!(ctx.i, 1, "Index at next character after number.");
             }
 
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         match read_number(Context::new(&(string_to_vec(String::from("1X"))))) {
@@ -701,7 +733,7 @@ M:2/4
                 assert_eq!(val, 1, "Can read single digit.");
                 assert_eq!(ctx.i, 1, "Index at next character after number.");
             }
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // Longer.
@@ -710,7 +742,7 @@ M:2/4
                 assert_eq!(val, 12345, "Can read longer number.");
                 assert_eq!(ctx.i, 5, "Index at next character after number.");
             }
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // Max length.
@@ -719,7 +751,7 @@ M:2/4
                 assert_eq!(val, 1234567, "Can read max length number.");
                 assert_eq!(ctx.i, 7, "Index at next character after number.");
             }
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         //
@@ -729,19 +761,19 @@ M:2/4
         // Too long to end of input.
         match read_number(Context::new(&(string_to_vec(String::from("123456789"))))) {
             Err((_, LexError::NumberTooLong)) => assert!(true, "Should fail with NumberTooLong"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // No input.
         match read_number(Context::new(&(string_to_vec(String::from(""))))) {
             Err((_, LexError::ExpectedNumber)) => assert!(true, "Should fail with ExpectedNumber"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         // Not a number.
         match read_number(Context::new(&(string_to_vec(String::from("five"))))) {
             Err((_, LexError::ExpectedNumber)) => assert!(true, "Should fail with ExpectedNumber"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
     }
 
@@ -753,25 +785,39 @@ M:2/4
 
         // Valid time signature but no delimiter means in practice that the field never terminated.
         match lex_metre(Context::new(&(string_to_vec(String::from("C")))), '\n') {
-            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => assert!(true, "Should fail with ExpectedMetre"),
-            _ => assert!(false)
+            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => {
+                assert!(true, "Should fail with ExpectedMetre")
+            }
+            _ => assert!(false),
         }
 
         // Empty time signature.
         match lex_metre(Context::new(&(string_to_vec(String::from("")))), '\n') {
-            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => assert!(true, "Should fail with ExpectedMetre"),
-            _ => assert!(false)
+            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => {
+                assert!(true, "Should fail with ExpectedMetre")
+            }
+            _ => assert!(false),
         }
 
         // Stupid invalid numbers.
-        match lex_metre(Context::new(&(string_to_vec(String::from("20000000000/1\n")))), '\n') {
-            LexResult::Error(_, LexError::NumberTooLong) => assert!(true, "Numerator fail with NumberTooLong"),
-            _ => assert!(false)
+        match lex_metre(
+            Context::new(&(string_to_vec(String::from("20000000000/1\n")))),
+            '\n',
+        ) {
+            LexResult::Error(_, LexError::NumberTooLong) => {
+                assert!(true, "Numerator fail with NumberTooLong")
+            }
+            _ => assert!(false),
         }
 
-        match lex_metre(Context::new(&(string_to_vec(String::from("6/80000000000000000\n")))), '\n') {
-            LexResult::Error(_, LexError::NumberTooLong) => assert!(true, "Denomenator fail with NumberTooLong"),
-            _ => assert!(false)
+        match lex_metre(
+            Context::new(&(string_to_vec(String::from("6/80000000000000000\n")))),
+            '\n',
+        ) {
+            LexResult::Error(_, LexError::NumberTooLong) => {
+                assert!(true, "Denomenator fail with NumberTooLong")
+            }
+            _ => assert!(false),
         }
 
         //
@@ -779,30 +825,35 @@ M:2/4
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("C\n")))), '\n') {
             LexResult::T(_, T::Metre(4, 4)) => assert!(true, "C should be parsed"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("C|\n")))), '\n') {
             LexResult::T(_, T::Metre(2, 4)) => assert!(true, "C should be parsed"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
-        
+
         //
         // Numerical
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("2/4\n")))), '\n') {
             LexResult::T(_, T::Metre(2, 4)) => assert!(true, "2/4 time signature should be parsed"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("6/8\n")))), '\n') {
             LexResult::T(_, T::Metre(6, 8)) => assert!(true, "6/8 time signature should be parsed"),
-            _ => assert!(false)
+            _ => assert!(false),
         }
 
-        match lex_metre(Context::new(&(string_to_vec(String::from("200/400\n")))), '\n') {
-            LexResult::T(_, T::Metre(200, 400)) => assert!(true, "Ridiculous but valid time signature should be parsed"),
-            _ => assert!(false)
+        match lex_metre(
+            Context::new(&(string_to_vec(String::from("200/400\n")))),
+            '\n',
+        ) {
+            LexResult::T(_, T::Metre(200, 400)) => {
+                assert!(true, "Ridiculous but valid time signature should be parsed")
+            }
+            _ => assert!(false),
         }
     }
 
