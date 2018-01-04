@@ -214,14 +214,14 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 }
 
 // The activity we were undertaking at the time when something happened.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 enum During {
     Metre,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
 /// Avoiding generic 'expected char' type values.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 enum LexError {
     /// We expected to find a delimiter at some point after the current position but couldn't.
     ExpectedDelimiter(char),
@@ -252,12 +252,13 @@ enum LexError {
 
     /// Feature not implemented yet.
     /// Should have no tests for this.
+    /// Marker value for tracking down callsite.
     /// TODO remove this when feautre complete.
-    UnimplementedError,
+    UnimplementedError(u32),
 }
 
 /// A glorified Option type that allows encoding errors.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 enum LexResult<'a> {
     /// Token. Shortened as it's used a lot.
     T(Context<'a>, T),
@@ -266,13 +267,10 @@ enum LexResult<'a> {
 
 /// ABC Token.
 /// Shortened as it's used a lot.
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 enum T {
     Terminal,
     Newline,
-
-    // A useless character.
-    Skip,
 
     // Text header fields.
     Area(String),
@@ -362,19 +360,19 @@ fn read(ctx: Context) -> LexResult {
                         match first_char {
                             // Key signature.
                             // TODO remember to switch tune context.
-                            'K' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            'K' => return LexResult::Error(ctx, LexError::UnimplementedError(1)),
 
                             // Default note length.
-                            'L' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            'L' => return LexResult::Error(ctx, LexError::UnimplementedError(2)),
 
                             // Metre.
                             'M' => return lex_metre(ctx, '\n'),
 
                             // Parts.
-                            'P' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            'P' => return LexResult::Error(ctx, LexError::UnimplementedError(3)),
 
                             // Tempo
-                            'Q' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            'Q' => return LexResult::Error(ctx, LexError::UnimplementedError(4)),
 
                             // This can only happen if the above cases get out of sync.
                             _ => return LexResult::Error(ctx, LexError::ExpectedFieldType),
@@ -402,23 +400,20 @@ fn read(ctx: Context) -> LexResult {
 /// A stateful lexer for an ABC string.
 /// Implements Iterator.
 struct Lexer<'a> {
-    // content: &'a[char],
     context: Context<'a>,
-    error: Option<(Context<'a>, LexError)>,
+
+    // Was the last result an error?
+    // Used to attempt to skip over bad input.
+    error: Option<LexError>,
 }
 
 impl<'a> Lexer<'a> {
     fn new(content: &'a [char]) -> Lexer<'a> {
         let context = Context::new(&content);
 
-        // The error we encountered.
-        // Becuase iteration stops at the first error, we only need to store one.
-        let error = None;
-
         Lexer {
-            // content,
             context,
-            error,
+            error: None,
         }
     }
 
@@ -427,31 +422,53 @@ impl<'a> Lexer<'a> {
         self.context = self.context.in_body();
         self
     }
+
+    /// Collect all tokens into vector, ignoring errors.
+    /// For testing. A real consumer should take account of errors!
+    fn collect_tokens(self) -> Vec<T> {
+        self.filter_map(|x| match x {
+            LexResult::T(_, token) => Some(token),
+            LexResult::Error(_, _) => None,
+        }).collect::<Vec<T>>()
+    }
 }
 
-
 impl<'a> Iterator for Lexer<'a> {
-    type Item = T;
+    type Item = LexResult<'a>;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<LexResult<'a>> {
+        // If we got an error last time we may want to skip over the input to try and resume.
+        // For now, it's always 1 char. But in future may want to switch on error type.
+        let skip_amount = match self.error {
+            Some(_) => 1,
+            _ => 0,
+        };
+
+        self.context = self.context.clone().skip(skip_amount);
+        self.error = None;
+
         // Take a temporary clone of self.context so it can be consumed.
         // TODO could read() work with a ref?
-        match read(self.context.clone()) {
-            LexResult::T(new_context, token) => {
-                self.context = new_context;
+        let result = read(self.context.clone());
 
-                match token {
-                    // Terminal token means stop iterating.
-                    T::Terminal => None,
-
-                    // Anything else, return and keep iterating.
-                    _ => Some(token),
-                }
-            }
-            LexResult::Error(new_context, error) => {
-                // An error stops iteration.
-                self.error = Some((new_context, error));
+        match result {
+            // Stop iteration when we reach the terminal.
+            LexResult::T(context, T::Terminal) => {
+                self.context = context;
                 None
+            }
+
+            // If it's an error, return it and set the flag.
+            LexResult::Error(context, error) => {
+                self.context = context.clone();
+                self.error = Some(error.clone());
+                Some(LexResult::Error(context, error))
+            }
+
+            // Otherwise it's a token.
+            LexResult::T(context, token) => {
+                self.context = context.clone();
+                Some(LexResult::T(context, token))
             }
         }
     }
@@ -522,6 +539,40 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
     }
 
     #[test]
+    fn lexer_can_skip_err() {
+        // Input has one good field, one with an error, then another good one.
+        let input = &(string_to_vec("T:Title\nM:6/\nC:Composer\n".to_string()));
+
+        // The iterator's result should include all errors and context.
+        let all_results = Lexer::new(input).collect::<Vec<LexResult>>();
+
+        // Check that we returned token, error, token.
+        match all_results[0] {
+            LexResult::T(_, ref token) => assert_eq!(token, &T::Title("Title".to_string())),
+            _ => assert!(false),
+        }
+
+        match all_results[1] {
+            LexResult::Error(_, LexError::ExpectedNumber) => assert!(true),
+            _ => assert!(false),
+        }
+
+        match all_results[2] {
+            LexResult::T(_, ref token) => assert_eq!(token, &T::Composer("Composer".to_string())),
+            _ => assert!(false),
+        }
+
+        // The collect_tokens() allows collection of tokens ignoring the errors.
+        assert_eq!(
+            Lexer::new(input).collect_tokens(),
+            vec![
+                T::Title("Title".to_string()),
+                T::Composer("Composer".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn read_text_headers_test() {
         let input = &(string_to_vec(
             "A:AREA
@@ -545,7 +596,7 @@ M:2/4
         ));
 
         let lexer = Lexer::new(input);
-        let tokens = lexer.collect::<Vec<T>>();
+        let tokens = lexer.collect_tokens();
 
         assert_eq!(
             tokens,
@@ -572,7 +623,7 @@ M:2/4
         // Make sure we can lex Windows and Unix line endings.
         let input = &(string_to_vec("T:TITLE\r\nB:BOOK\n".to_string()));
 
-        let tokens = Lexer::new(input).collect::<Vec<T>>();
+        let tokens = Lexer::new(input).collect_tokens();
 
         assert_eq!(
             tokens,
@@ -659,10 +710,10 @@ M:2/4
 
         // End of file in tune body.
         assert_eq!(
-            Lexer::new(&(string_to_vec("\r\n".to_string())))
+            Lexer::new(&(string_to_vec("\n".to_string())))
                 .in_body()
-                .collect::<Vec<T>>(),
-            vec![T::Skip, T::Newline]
+                .collect_tokens(),
+            vec![T::Newline]
         )
 
     }
