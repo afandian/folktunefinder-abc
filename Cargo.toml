@@ -5,7 +5,7 @@ authors = ["Joe Wass <joe@afandian.com>"]
 
 
 [[bin]]
-name = "crate-name-here"
+name = "abctool"
 doc = false
 path = "src/main.rs"
 
