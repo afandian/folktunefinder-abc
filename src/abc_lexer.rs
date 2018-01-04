@@ -5,7 +5,7 @@
 
 /// Which bit of the tune are we in?
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-enum TuneContext {
+enum TuneSection {
     Header,
     Body,
 }
@@ -13,7 +13,7 @@ enum TuneContext {
 /// Context required to lex an ABC String.
 /// Context object is immutable for simpler state and testing.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-struct Context<'a> {
+pub struct Context<'a> {
     /// The ABC tune content as a vector of potentially multibyte characters.
     /// Stored as a slice of chars so we can peek.
     c: &'a [char],
@@ -24,7 +24,7 @@ struct Context<'a> {
     // The current index of the string during lexing.
     i: usize,
 
-    tune_context: TuneContext,
+    tune_section: TuneSection,
 }
 
 impl<'a> Context<'a> {
@@ -36,7 +36,7 @@ impl<'a> Context<'a> {
             c,
             l,
             i: 0,
-            tune_context: TuneContext::Header,
+            tune_section: TuneSection::Header,
         }
     }
 
@@ -46,9 +46,10 @@ impl<'a> Context<'a> {
     }
 
     /// Move to body state.
+    #[cfg(test)]
     fn in_body(&self) -> Context<'a> {
         Context {
-            tune_context: TuneContext::Body,
+            tune_section: TuneSection::Body,
             ..*self
         }
     }
@@ -63,6 +64,10 @@ impl<'a> Context<'a> {
     fn rewind(self, amount: usize) -> Context<'a> {
         let i = self.i - amount;
         Context { i, ..self }
+    }
+
+    pub fn get_index(&self) -> usize {
+        self.i
     }
 }
 
@@ -199,7 +204,8 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                             match read_number(ctx) {
                                 Err((ctx, err)) => LexResult::Error(ctx, err),
                                 Ok((ctx, denomenator)) => {
-                                    LexResult::T(ctx, T::Metre(numerator, denomenator))
+                                    // Skip one character for the delimiter.
+                                    LexResult::T(ctx.skip(1), T::Metre(numerator, denomenator))
                                 }
                             }
                         }
@@ -215,14 +221,14 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 
 // The activity we were undertaking at the time when something happened.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-enum During {
+pub enum During {
     Metre,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
 /// Avoiding generic 'expected char' type values.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-enum LexError {
+pub enum LexError {
     /// We expected to find a delimiter at some point after the current position but couldn't.
     ExpectedDelimiter(char),
 
@@ -259,7 +265,7 @@ enum LexError {
 
 /// A glorified Option type that allows encoding errors.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-enum LexResult<'a> {
+pub enum LexResult<'a> {
     /// Token. Shortened as it's used a lot.
     T(Context<'a>, T),
     Error(Context<'a>, LexError),
@@ -268,7 +274,7 @@ enum LexResult<'a> {
 /// ABC Token.
 /// Shortened as it's used a lot.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-enum T {
+pub enum T {
     Terminal,
     Newline,
 
@@ -303,8 +309,8 @@ fn read(ctx: Context) -> LexResult {
 
     let first_char = ctx.c[ctx.i];
 
-    match ctx.tune_context {
-        TuneContext::Header => {
+    match ctx.tune_section {
+        TuneSection::Header => {
             match first_char {
                 // Text headers.
                 'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' | 'T' |
@@ -385,7 +391,7 @@ fn read(ctx: Context) -> LexResult {
             };
         }
 
-        TuneContext::Body => {
+        TuneSection::Body => {
             match first_char {
                 '\n' => return LexResult::T(ctx.skip(1), T::Newline),
 
@@ -399,7 +405,7 @@ fn read(ctx: Context) -> LexResult {
 
 /// A stateful lexer for an ABC string.
 /// Implements Iterator.
-struct Lexer<'a> {
+pub struct Lexer<'a> {
     context: Context<'a>,
 
     // Was the last result an error?
@@ -408,7 +414,7 @@ struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    fn new(content: &'a [char]) -> Lexer<'a> {
+    pub fn new(content: &'a [char]) -> Lexer<'a> {
         let context = Context::new(&content);
 
         Lexer {
@@ -418,6 +424,7 @@ impl<'a> Lexer<'a> {
     }
 
     // Skip into the body. For testing only.
+    #[cfg(test)]
     fn in_body(mut self) -> Lexer<'a> {
         self.context = self.context.in_body();
         self
@@ -425,6 +432,7 @@ impl<'a> Lexer<'a> {
 
     /// Collect all tokens into vector, ignoring errors.
     /// For testing. A real consumer should take account of errors!
+    #[cfg(test)]
     fn collect_tokens(self) -> Vec<T> {
         self.filter_map(|x| match x {
             LexResult::T(_, token) => Some(token),
@@ -474,13 +482,15 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
-fn string_to_vec(input: String) -> Vec<char> {
-    input.chars().collect::<Vec<char>>()
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn string_to_vec(input: String) -> Vec<char> {
+        input.chars().collect::<Vec<char>>()
+    }
+
 
     const EMPTY: &str = "";
 

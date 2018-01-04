@@ -35,6 +35,54 @@ This will be a general purpose ABC tool. It may provide a range of functionality
  - Handle escaped closing square brackets for inline fields.
  - Run over entire folktunefinder.com corpus and make sure all parse errors are well-known (i.e. no UnknownErorrs).
 
+## Potential Features
+
+### Cleanup
+
+ - Uniformalize line endings (based on stats or configurable).
+ - Strip and normalize whitespace around headers.
+ - Sort headers.
+ - Lowest common denomenator in time signature.
+ - Shortest possible notation for notes (/ and /2, dotted rhythm).
+ - Remove empty text fields.
+
+
+## To run
+
+Currently work in progress is is 'clean':
+
+    $ cat test_resources/so-far.abc |  target/debug/abctool cleanup
+
+    There were 4 errors!
+      | A:AREA
+      | B:BOOK
+      | C:COMPOSER
+      | T:
+      | D:DISCOGRAPHY
+      | F:FILENAME
+      | G:GROUP
+      | M:2/
+            ^-- ExpectedNumber
+      | H:HISTORY
+      | I:INFO
+      | N:NOTES
+      | O:ORIGIN
+      | T:
+      | S:SOURCE
+      | M:
+          ^-- PrematureEnd(Metre)
+      | T:TITLE
+      | M:2/4
+      | M:2/4X
+              ^-- UnexpectedHeaderLine
+      | W:WORDS
+      | X:100
+      | Z:TRANSCRIPTION
+      | M:
+          ^-- PrematureEnd(Metre)
+      | 
+
+
 ## Getting started
 
 Install Cargo.
