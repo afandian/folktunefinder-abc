@@ -58,6 +58,12 @@ impl<'a> Context<'a> {
         let i = self.i + amount;
         Context { i, ..self }
     }
+
+    /// Rewind index back this many.
+    fn rewind(self, amount: usize) -> Context<'a> {
+        let i = self.i - amount;
+        Context { i, ..self }
+    }
 }
 
 /// Read until delmiter character.
@@ -96,15 +102,13 @@ fn read_until<'a>(
 fn read_number<'a>(ctx: Context<'a>) -> Result<(Context<'a>, u32), (Context, LexError)> {
     // We're not going to read anything longer than this.
     // Doing so would be unlikely and overflow a u32.
-    const MAX_CHARS : usize = 9;
+    const MAX_CHARS : usize = 8;
 
     let mut value : u32 = 0;
     let mut length = 0;
     for i in ctx.i .. ctx.l {
-        
-
         // Check before we try to mutate value. This catches the overflow.
-        if length > MAX_CHARS {
+        if length >= MAX_CHARS {
             return Err((ctx.skip(length), LexError::NumberTooLong));
         }
 
@@ -133,6 +137,56 @@ fn read_number<'a>(ctx: Context<'a>) -> Result<(Context<'a>, u32), (Context, Lex
     }
 }
 
+/// Lex a metre declaration, e.g. "2/4" or "C|".
+fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
+    
+    // First we need to read the content of the header to the end of the header value.
+    match read_until(ctx, delimiter) {
+        Err(ctx) => LexResult::Error(ctx, LexError::PrematureEnd(During::Metre)),
+
+        Ok((ctx, content)) => {
+            if content == &['C'] {
+                LexResult::T(ctx, T::Metre(4, 4))
+            } else if content == &['C', '|'] {
+                LexResult::T(ctx, T::Metre(2, 4))
+            } else {
+
+                // Because we need to work in the original context for parsing numbers,
+                // rewind the context back the length of the slice.
+                let ctx = ctx.rewind(content.len()+1);
+                
+                // It's a numerical metre.
+                match read_number(ctx) {
+                    Err((ctx, err)) => LexResult::Error(ctx, err),
+                    Ok((ctx, numerator)) => {
+                        if !(ctx.has(1) && ctx.c[ctx.i] == '/') {
+                            LexResult::Error(ctx, LexError::ExpectedSlashInMetre)
+                        } else {
+
+                            // Skip slash.
+                            let ctx = ctx.skip(1);
+
+                            match read_number(ctx) {
+                               Err((ctx, err)) => LexResult::Error(ctx, err),
+                               Ok((ctx, denomenator)) => LexResult::T(ctx, T::Metre(numerator, denomenator))
+                            }
+                        }
+
+                    }
+
+                }
+
+            }
+        }
+    }
+}
+
+// The activity we were undertaking at the time when something happened.
+#[derive(Debug)]
+enum During {
+    Metre
+}
+
 /// Types of errors. These should be as specific as possible to give the best help.
 /// Avoiding generic 'expected char' type values.
 #[derive(Debug)]
@@ -149,8 +203,14 @@ enum LexError {
     /// We expected to find a number here.
     ExpectedNumber,
 
+    /// During a metre declaration, expected to get slash.
+    ExpectedSlashInMetre,
+
     /// Number is too long.
     NumberTooLong,
+
+    /// Premature end of file. We expected something else here.
+    PrematureEnd(During),
 
     /// In the tune header, we found a start of line that we couldn't recognise.
     UnexpectedHeaderLine,
@@ -198,6 +258,9 @@ enum T {
     Words(String),
     X(String),
     Transcription(String),
+
+    // More interesting header fields.
+    Metre(u32, u32),
 }
 
 /// Try to read a single T and return a new context.
@@ -261,6 +324,9 @@ fn read(ctx: Context) -> LexResult {
                     if !(ctx.has(2) && ctx.c[ctx.i + 1] == ':') {
                         return LexResult::Error(ctx, LexError::ExpectedColon);
                     } else {
+                        // Skip colon and field.
+                        let ctx = ctx.skip(2);
+
                         match first_char {
                             // Key signature.
                             // TODO remember to switch tune context.
@@ -270,7 +336,7 @@ fn read(ctx: Context) -> LexResult {
                             'L' => return LexResult::Error(ctx, LexError::UnimplementedError),
 
                             // Metre.
-                            'M' => return LexResult::Error(ctx, LexError::UnimplementedError),
+                            'M' => return lex_metre(ctx, '\n'),
 
                             // Parts.
                             'P' => return LexResult::Error(ctx, LexError::UnimplementedError),
@@ -291,10 +357,7 @@ fn read(ctx: Context) -> LexResult {
 
         TuneContext::Body => {
             match first_char {
-                // Better to lex these individually so that we account for each character,
-                // then ignore the Skips later.
                 '\n' => return LexResult::T(ctx.skip(1), T::Newline),
-                '\r' => return LexResult::T(ctx.skip(1), T::Skip),
 
                 // TODO all tune body entities.
                 _ => return LexResult::Error(ctx, LexError::UnexpectedBodyChar),
@@ -444,11 +507,13 @@ T:TITLE
 W:WORDS
 X:100
 Z:TRANSCRIPTION
+M:2/4
 "
                 .to_string(),
         ));
 
-        let tokens = Lexer::new(input).collect::<Vec<T>>();
+        let lexer = Lexer::new(input);
+        let tokens = lexer.collect::<Vec<T>>();
 
         assert_eq!(
             tokens,
@@ -468,6 +533,7 @@ Z:TRANSCRIPTION
                 T::Words("WORDS".to_string()),
                 T::X("100".to_string()),
                 T::Transcription("TRANSCRIPTION".to_string()),
+                T::Metre(2, 4),
             ]
         );
 
@@ -613,8 +679,8 @@ Z:TRANSCRIPTION
         }
 
         // Max length.
-        match read_number(Context::new(&(string_to_vec(String::from("123456789"))))) {
-            Ok((_, val)) => assert_eq!(val, 123456789),
+        match read_number(Context::new(&(string_to_vec(String::from("12345678"))))) {
+            Ok((_, val)) => assert_eq!(val, 12345678),
             _ => assert!(false)
         }
 
@@ -648,10 +714,10 @@ Z:TRANSCRIPTION
         }
 
         // Max length.
-        match read_number(Context::new(&(string_to_vec(String::from("123456789X"))))) {
+        match read_number(Context::new(&(string_to_vec(String::from("1234567X"))))) {
             Ok((ctx, val)) => {
-                assert_eq!(val, 123456789, "Can read max length number.");
-                assert_eq!(ctx.i, 9, "Index at next character after number.");
+                assert_eq!(val, 1234567, "Can read max length number.");
+                assert_eq!(ctx.i, 7, "Index at next character after number.");
             }
             _ => assert!(false)
         }
@@ -661,7 +727,7 @@ Z:TRANSCRIPTION
         //
 
         // Too long to end of input.
-        match read_number(Context::new(&(string_to_vec(String::from("12345678901"))))) {
+        match read_number(Context::new(&(string_to_vec(String::from("123456789"))))) {
             Err((_, LexError::NumberTooLong)) => assert!(true, "Should fail with NumberTooLong"),
             _ => assert!(false)
         }
@@ -675,6 +741,67 @@ Z:TRANSCRIPTION
         // Not a number.
         match read_number(Context::new(&(string_to_vec(String::from("five"))))) {
             Err((_, LexError::ExpectedNumber)) => assert!(true, "Should fail with ExpectedNumber"),
+            _ => assert!(false)
+        }
+    }
+
+    #[test]
+    fn lex_metre_test() {
+        //
+        // Errors
+        //
+
+        // Valid time signature but no delimiter means in practice that the field never terminated.
+        match lex_metre(Context::new(&(string_to_vec(String::from("C")))), '\n') {
+            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => assert!(true, "Should fail with ExpectedMetre"),
+            _ => assert!(false)
+        }
+
+        // Empty time signature.
+        match lex_metre(Context::new(&(string_to_vec(String::from("")))), '\n') {
+            LexResult::Error(_, LexError::PrematureEnd(During::Metre)) => assert!(true, "Should fail with ExpectedMetre"),
+            _ => assert!(false)
+        }
+
+        // Stupid invalid numbers.
+        match lex_metre(Context::new(&(string_to_vec(String::from("20000000000/1\n")))), '\n') {
+            LexResult::Error(_, LexError::NumberTooLong) => assert!(true, "Numerator fail with NumberTooLong"),
+            _ => assert!(false)
+        }
+
+        match lex_metre(Context::new(&(string_to_vec(String::from("6/80000000000000000\n")))), '\n') {
+            LexResult::Error(_, LexError::NumberTooLong) => assert!(true, "Denomenator fail with NumberTooLong"),
+            _ => assert!(false)
+        }
+
+        //
+        // Shorthand.
+        //
+        match lex_metre(Context::new(&(string_to_vec(String::from("C\n")))), '\n') {
+            LexResult::T(_, T::Metre(4, 4)) => assert!(true, "C should be parsed"),
+            _ => assert!(false)
+        }
+
+        match lex_metre(Context::new(&(string_to_vec(String::from("C|\n")))), '\n') {
+            LexResult::T(_, T::Metre(2, 4)) => assert!(true, "C should be parsed"),
+            _ => assert!(false)
+        }
+        
+        //
+        // Numerical
+        //
+        match lex_metre(Context::new(&(string_to_vec(String::from("2/4\n")))), '\n') {
+            LexResult::T(_, T::Metre(2, 4)) => assert!(true, "2/4 time signature should be parsed"),
+            _ => assert!(false)
+        }
+
+        match lex_metre(Context::new(&(string_to_vec(String::from("6/8\n")))), '\n') {
+            LexResult::T(_, T::Metre(6, 8)) => assert!(true, "6/8 time signature should be parsed"),
+            _ => assert!(false)
+        }
+
+        match lex_metre(Context::new(&(string_to_vec(String::from("200/400\n")))), '\n') {
+            LexResult::T(_, T::Metre(200, 400)) => assert!(true, "Ridiculous but valid time signature should be parsed"),
             _ => assert!(false)
         }
     }
