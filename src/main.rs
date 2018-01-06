@@ -28,7 +28,7 @@ fn get_stdin() -> String {
 /// Check an ABC file, from STDIN to STDOUT.
 fn main_check() {
     let chars = get_stdin().chars().collect::<Vec<char>>();
-    let (num_errors, num_unshown, message) = abc_lexer::error_message(&chars);
+    let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
 
     if num_errors > 0 {
         if num_errors == 1 {
@@ -43,12 +43,14 @@ fn main_check() {
         if num_unshown > 0 {
             println!("{} errors weren't shown", num_unshown);
         }
-    } else {
-        println!("All good!");
-        println!("But here's the message anyway:");
-        println!("{}", message);
+        return;
     }
 
+    
+    let mut ast = tune_ast::TuneAst::new();
+
+    tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars), &mut ast);
+    println!("Tune: {:?}", ast);
 }
 
 fn main_unrecognised() {

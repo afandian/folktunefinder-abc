@@ -49,7 +49,6 @@ impl<'a> Context<'a> {
     }
 
     /// Move to body section.
-    #[cfg(test)]
     fn in_body(&self) -> Context<'a> {
         Context {
             tune_section: TuneSection::Body,
@@ -61,16 +60,6 @@ impl<'a> Context<'a> {
     fn skip(self, amount: usize) -> Context<'a> {
         let i = self.i + amount;
         Context { i, ..self }
-    }
-
-    /// Rewind index back this many.
-    fn rewind(self, amount: usize) -> Context<'a> {
-        let i = self.i - amount;
-        Context { i, ..self }
-    }
-
-    pub fn get_index(&self) -> usize {
-        self.i
     }
 }
 
@@ -537,6 +526,9 @@ fn read(ctx: Context) -> LexResult {
                             // Key signature.
                             // TODO remember to switch tune context.
                             'K' => {
+                                // K signals a switch to the body section.
+                                let ctx = ctx.in_body();
+
                                 return LexResult::Error(
                                     ctx,
                                     start_offset,
@@ -1224,12 +1216,14 @@ M:2/4
     }
 }
 
+
+
 /// Parse an ABC input, return nicely formatted error message and number of lex errors.
-pub fn error_message(input: &[char]) -> (usize, u32, String) {
+pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, usize, LexError)>) -> (usize, u32, String) {
     const ABC_PREFIX: &str = "  | ";
     const ERR_PREFIX: &str = "  > ";
 
-    let all_errors = Lexer::new(&input).collect_errors();
+    // let all_errors = Lexer::new(&input).collect_errors();
 
     let length = input.len();
 
@@ -1365,4 +1359,11 @@ pub fn error_message(input: &[char]) -> (usize, u32, String) {
     }
 
     (all_errors.len(), num_unshown, buf)
+}
+
+
+/// Parse an ABC input, return nicely formatted error message and number of lex errors.
+pub fn format_error_message_from_abc(input: &[char]) -> (usize, u32, String) {
+    let all_errors = Lexer::new(&input).collect_errors();
+    format_error_message(&input, all_errors)
 }

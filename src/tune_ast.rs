@@ -6,6 +6,7 @@ use abc_lexer as l;
 
 /// Vocabulary of object types.
 /// These are similar but different to the various lexer tokens.
+#[derive(Debug)]
 enum HeaderField {
     Area(String),
     Book(String),
@@ -25,6 +26,7 @@ enum HeaderField {
     Metre(u32, u32),
 }
 
+#[derive(Debug)]
 pub struct TuneAst {
     headers: Vec<HeaderField>,
     errors: Vec<(usize, l::LexError)>,
@@ -44,10 +46,6 @@ impl TuneAst {
 
     fn add_error(&mut self, index: usize, error: l::LexError) {
         self.errors.push((index, error));
-    }
-
-    pub fn num_errors(&self) -> usize {
-        self.errors.len()
     }
 }
 

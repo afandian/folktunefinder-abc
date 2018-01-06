@@ -2,5 +2,5 @@
 set -e
 
 cargo build
-cat test_resources/so-far.abc | RUST_BACKTRACE=1 target/debug/abctool check
+cat test_resources/so-far-good.abc | RUST_BACKTRACE=1 target/debug/abctool check
 
