@@ -25,18 +25,28 @@ fn get_stdin() -> String {
 }
 
 
-/// Cleanup an ABC file, from STDIN to STDOUT.
-fn main_cleanup() {
+/// Check an ABC file, from STDIN to STDOUT.
+fn main_check() {
     let chars = get_stdin().chars().collect::<Vec<char>>();
-    let lexer = abc_lexer::Lexer::new(&chars);
-    let mut ast = tune_ast::TuneAst::new();
+    let (num_errors, num_unshown, message) = abc_lexer::error_message(&chars);
 
-    tune_ast::read_from_lexer(lexer, &mut ast);
+    if num_errors > 0 {
+        if num_errors == 1 {
+            println!("There was {} error!", num_errors);
+        } else {
+            println!("There were {} errors!", num_errors);
+        }
 
-    if ast.num_errors() > 0 {
-        println!("There were {} errors!", ast.num_errors());
+        println!("{}", message);
 
-        tune_ast::print_errors(&ast, &chars);
+        // Don't expect this to happen but explain if it does.
+        if num_unshown > 0 {
+            println!("{} errors weren't shown", num_unshown);
+        }
+    } else {
+        println!("All good!");
+        println!("But here's the message anyway:");
+        println!("{}", message);
     }
 
 }
@@ -44,7 +54,7 @@ fn main_cleanup() {
 fn main_unrecognised() {
     println!(
         "Unrecognised command. Try:
- - cleanup"
+ - check"
     );
 }
 
@@ -54,7 +64,7 @@ fn main() {
     match args.nth(1) {
         Some(first) => {
             match first.as_ref() {
-                "cleanup" => main_cleanup(),
+                "check" => main_check(),
                 _ => main_unrecognised(),
             }
         }

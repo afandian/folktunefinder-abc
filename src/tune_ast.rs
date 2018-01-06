@@ -59,7 +59,7 @@ pub fn read_from_lexer(lexer: l::Lexer, ast: &mut TuneAst) {
             // Keeping the context confers the lifetime of the underlying ABC char slice on the AST.
             // Coupling the AST to its source isn't desirable. The index is all we need to store.
             // Using it with the input to print errors can exist in a parent context.
-            l::LexResult::Error(context, error) => ast.add_error(context.get_index(), error),
+            l::LexResult::Error(_, offset, error) => ast.add_error(offset, error),
 
             // If there's a token we don't care about the context.
             l::LexResult::T(_, token) => {
@@ -91,55 +91,4 @@ pub fn read_from_lexer(lexer: l::Lexer, ast: &mut TuneAst) {
 
         }
     }
-}
-
-/// Print out error messages.
-/// TODO This isn't great, and only prints one error per line. But does the job.
-/// TODO Make error messages much friendlier!
-pub fn print_errors(ast: &TuneAst, input: &[char]) {
-    let mut char_of_line = 0;
-    let mut error_on_line = false;
-    let mut error_on_char_of_line = 0;
-    let mut last_error = None;
-
-    print!("  | ");
-    for i in 0..input.len() {
-        let c = input[i];
-
-        // Each character check to see if there's an error at this char.
-        // Inefficient, but at the length of tune we're dealing with it't not the end of the world.
-        for &(error_i, ref error) in ast.errors.iter() {
-            if i == error_i {
-                error_on_line = true;
-                error_on_char_of_line = char_of_line;
-                last_error = Some(error);
-                break;
-            }
-        }
-
-        if c == '\n' {
-            char_of_line = 0;
-        } else {
-            char_of_line += 1;
-        }
-
-        print!("{}", c);
-
-        if c == '\n' {
-            if error_on_line {
-                for _ in 0..error_on_char_of_line {
-                    print!(" ");
-                }
-                println!("    ^-- {:?}", last_error.unwrap());
-                print!("  | ");
-
-                error_on_line = false;
-            } else {
-                print!("  | ");
-            }
-        }
-
-    }
-
-    println!("\n\n");
 }

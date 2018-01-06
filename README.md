@@ -45,6 +45,8 @@ This will be a general purpose ABC tool. It may provide a range of functionality
  - Lowest common denomenator in time signature.
  - Shortest possible notation for notes (/ and /2, dotted rhythm).
  - Remove empty text fields.
+ - Normalize to Unicode or to escape sequence ASCII.
+ - 4/4 => C etc
 
 
 ## To run
