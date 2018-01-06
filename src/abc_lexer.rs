@@ -690,6 +690,156 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
+/// Parse an ABC input, return nicely formatted error message and number of lex errors.
+pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, usize, LexError)>) -> (usize, u32, String) {
+    const ABC_PREFIX: &str = "  | ";
+    const ERR_PREFIX: &str = "  > ";
+
+    // let all_errors = Lexer::new(&input).collect_errors();
+
+    let length = input.len();
+
+    // String buffer of the error message.
+    // Assume that we'll need around double the ABC input.
+    // TODO Instrument this on the corpus of ABC tunes.
+    let mut buf = String::with_capacity(input.len() * 2);
+
+    // The number of messages that we didn't show.
+    // This happens if there's more than one error at a particular index.
+    // The lexer shouldn't produce this, but if it does, we want to catch and explain it.
+    let mut num_unshown = 0;
+
+    // Start and end index of the most recent line.
+    let mut start_of_line;
+    let mut end_of_line = 0;
+
+    // For each line we save the errors that occurred at each index.
+    let mut error_index: Vec<Option<LexError>> = Vec::with_capacity(100);
+
+    // Indent the first line.
+    buf.push_str(ABC_PREFIX);
+    let mut first = true;
+    for i in 0..input.len() {
+
+        // Deal both with empty strings and non-empty ones.
+        let last_char = i + 1 >= length;
+
+        let c = input[i];
+
+        buf.push(c);
+
+        // If it's a newline.
+        // If we get a \r\n\ sequence, the \n will still be the last character.
+        if c == '\n' || last_char {
+
+            // Start of line is the end of the previous one, plus its newline.
+            // Bit of a hack for the starting line, which isn't preceeded by a newline.
+            start_of_line = if first {
+                first = false;
+                0
+            } else {
+                end_of_line + 1
+            };
+            end_of_line = i;
+
+            // If it's the last character and we don't get the benefit of a newline, it'll mess up
+            // any error formatting that should be shown under the line. So insert one.
+            // TODO can we accomplish the same thing just by appending a newline to the input?
+            if last_char && c != '\n' {
+                buf.push('\n');
+                end_of_line += 1;
+            }
+
+            let length = (end_of_line - start_of_line) + 1;
+
+            // This doesn't allocate.
+            error_index.resize(0, None);
+            error_index.resize(length, None);
+
+            // Build the index of errors per character on this line.
+            for &(_, offset, ref error) in all_errors.iter() {
+                if offset >= start_of_line && offset <= end_of_line {
+                    let index_i = offset - start_of_line;
+
+                    // If there  was more than one error at this index, take only the first.
+                    // This is because it would be visually confusing and not much help to show
+                    // two messages coming from the same character. Also, the first one is
+                    // probably more useful, as subsequent ones would be caused by the lexer
+                    // being in a weird state.
+                    match error_index[index_i] {
+                        // Copy the error. It's only a small value type and this is practical.
+                        // than copy a reference and get lifetimes involved.
+                        None => error_index[index_i] = Some(error.clone()),
+                        Some(_) => num_unshown += 1,
+                    }
+
+                }
+            }
+
+            // We're going to print a pyramid of error messages to accommodate multiple errors per
+            // line.  Outer loop decides which error we're going to print, inner loop does the
+            // indentation.
+            let mut first_line = true;
+            for error_line in error_index.iter() {
+                let mut indent = 0;
+
+                match *error_line {
+                    None => (),
+                    Some(ref error) => {
+                        buf.push_str(ERR_PREFIX);
+                        indent += ERR_PREFIX.len();
+
+                        for error_char in error_index.iter() {
+                            match *error_char {
+                                None => {
+                                    buf.push(' ');
+                                    indent += 1
+                                }
+                                Some(_) => {
+                                    buf.push(if error_line == error_char {
+                                        if first_line {
+                                            first_line = false;
+                                            '^'
+                                        } else {
+                                            '|'
+                                        }
+                                    } else {
+                                        '-'
+                                    });
+                                    indent += 1;
+
+                                    buf.push_str(&"-- ");
+                                    indent += 3;
+
+                                    error.format(indent, &mut buf);
+
+                                    // If we reached the target error, don't keep scanning the line.
+                                    break;
+
+                                }
+                            }
+                        }
+                        buf.push('\n');
+                    }
+                }
+            }
+
+            // Indent the next line.
+            buf.push_str(ABC_PREFIX);
+        }
+
+    }
+
+    (all_errors.len(), num_unshown, buf)
+}
+
+
+/// Parse an ABC input, return nicely formatted error message and number of lex errors.
+pub fn format_error_message_from_abc(input: &[char]) -> (usize, u32, String) {
+    let all_errors = Lexer::new(&input).collect_errors();
+    format_error_message(&input, all_errors)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1214,156 +1364,4 @@ M:2/4
             _ => assert!(false, "Terminal should be returned"),
         }
     }
-}
-
-
-
-/// Parse an ABC input, return nicely formatted error message and number of lex errors.
-pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, usize, LexError)>) -> (usize, u32, String) {
-    const ABC_PREFIX: &str = "  | ";
-    const ERR_PREFIX: &str = "  > ";
-
-    // let all_errors = Lexer::new(&input).collect_errors();
-
-    let length = input.len();
-
-    // String buffer of the error message.
-    // Assume that we'll need around double the ABC input.
-    // TODO Instrument this on the corpus of ABC tunes.
-    let mut buf = String::with_capacity(input.len() * 2);
-
-    // The number of messages that we didn't show.
-    // This happens if there's more than one error at a particular index.
-    // The lexer shouldn't produce this, but if it does, we want to catch and explain it.
-    let mut num_unshown = 0;
-
-    // Start and end index of the most recent line.
-    let mut start_of_line;
-    let mut end_of_line = 0;
-
-    // For each line we save the errors that occurred at each index.
-    let mut error_index: Vec<Option<LexError>> = Vec::with_capacity(100);
-
-    // Indent the first line.
-    buf.push_str(ABC_PREFIX);
-    let mut first = true;
-    for i in 0..input.len() {
-
-        // Deal both with empty strings and non-empty ones.
-        let last_char = i + 1 >= length;
-
-        let c = input[i];
-
-        buf.push(c);
-
-        // If it's a newline.
-        // If we get a \r\n\ sequence, the \n will still be the last character.
-        if c == '\n' || last_char {
-
-            // Start of line is the end of the previous one, plus its newline.
-            // Bit of a hack for the starting line, which isn't preceeded by a newline.
-            start_of_line = if first {
-                first = false;
-                0
-            } else {
-                end_of_line + 1
-            };
-            end_of_line = i;
-
-            // If it's the last character and we don't get the benefit of a newline, it'll mess up
-            // any error formatting that should be shown under the line. So insert one.
-            // TODO can we accomplish the same thing just by appending a newline to the input?
-            if last_char && c != '\n' {
-                buf.push('\n');
-                end_of_line += 1;
-            }
-
-            let length = (end_of_line - start_of_line) + 1;
-
-            // This doesn't allocate.
-            error_index.resize(0, None);
-            error_index.resize(length, None);
-
-            // Build the index of errors per character on this line.
-            for &(_, offset, ref error) in all_errors.iter() {
-                if offset >= start_of_line && offset <= end_of_line {
-                    let index_i = offset - start_of_line;
-
-                    // If there  was more than one error at this index, take only the first.
-                    // This is because it would be visually confusing and not much help to show
-                    // two messages coming from the same character. Also, the first one is
-                    // probably more useful, as subsequent ones would be caused by the lexer
-                    // being in a weird state.
-                    match error_index[index_i] {
-                        // Copy the error. It's only a small value type and this is practical.
-                        // than copy a reference and get lifetimes involved.
-                        None => error_index[index_i] = Some(error.clone()),
-                        Some(_) => num_unshown += 1,
-                    }
-
-                }
-            }
-
-            // We're going to print a pyramid of error messages to accommodate multiple errors per
-            // line.  Outer loop decides which error we're going to print, inner loop does the
-            // indentation.
-            let mut first_line = true;
-            for error_line in error_index.iter() {
-                let mut indent = 0;
-
-                match *error_line {
-                    None => (),
-                    Some(ref error) => {
-                        buf.push_str(ERR_PREFIX);
-                        indent += ERR_PREFIX.len();
-
-                        for error_char in error_index.iter() {
-                            match *error_char {
-                                None => {
-                                    buf.push(' ');
-                                    indent += 1
-                                }
-                                Some(_) => {
-                                    buf.push(if error_line == error_char {
-                                        if first_line {
-                                            first_line = false;
-                                            '^'
-                                        } else {
-                                            '|'
-                                        }
-                                    } else {
-                                        '-'
-                                    });
-                                    indent += 1;
-
-                                    buf.push_str(&"-- ");
-                                    indent += 3;
-
-                                    error.format(indent, &mut buf);
-
-                                    // If we reached the target error, don't keep scanning the line.
-                                    break;
-
-                                }
-                            }
-                        }
-                        buf.push('\n');
-                    }
-                }
-            }
-
-            // Indent the next line.
-            buf.push_str(ABC_PREFIX);
-        }
-
-    }
-
-    (all_errors.len(), num_unshown, buf)
-}
-
-
-/// Parse an ABC input, return nicely formatted error message and number of lex errors.
-pub fn format_error_message_from_abc(input: &[char]) -> (usize, u32, String) {
-    let all_errors = Lexer::new(&input).collect_errors();
-    format_error_message(&input, all_errors)
 }
