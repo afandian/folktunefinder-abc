@@ -51,38 +51,56 @@ This will be a general purpose ABC tool. It may provide a range of functionality
 
 ## To run
 
-Currently work in progress is is 'clean':
+Currently work in progress is is 'check':
 
-    $ cat test_resources/so-far.abc |  target/debug/abctool cleanup
+        $ cat test_resources/so-far.abc |  target/debug/abctool check
 
-    There were 4 errors!
-      | A:AREA
-      | B:BOOK
-      | C:COMPOSER
-      | T:
-      | D:DISCOGRAPHY
-      | F:FILENAME
-      | G:GROUP
-      | M:2/
-            ^-- ExpectedNumber
-      | H:HISTORY
-      | I:INFO
-      | N:NOTES
-      | O:ORIGIN
-      | T:
-      | S:SOURCE
+    There was 1 error!
       | M:
-          ^-- PrematureEnd(Metre)
-      | T:TITLE
-      | M:2/4
-      | M:2/4X
-              ^-- UnexpectedHeaderLine
-      | W:WORDS
-      | X:100
-      | Z:TRANSCRIPTION
+      >   ^-- I've got to the end of the ABC tune before I'm ready.
+              I was in the middle of reading a time signature
+      |
+
+    There was 1 error!
+      | M:3
+      >    ^-- I expected to find a slash for the time signature.
+      |
+
+    There was 1 error!
+      | M:3/
+      >     ^-- I expected to find a number here.
+      |
+
+    There was 1 error!
+      | M:3/4
+      |
+      > ^-- I expected to find a header, but found something else.
+      |
+
+    There were 2 errors!
+      | M:23456789012/1234567890
+      >   ^-- This number is longer than I expected.
+      | T:Hello
+      | M:1111
+      >       ^-- I expected to find a slash for the time signature.
+      | T:This
+      |
+
+
+    There were 2 errors!
+      | M:23456789012/1234567890
+      >   ^-- This number is longer than I expected.
+      | T:Hello
+      | M:1111
+      >       ^-- I expected to find a slash for the time signature.
+      | T:This
+      |
+
+
+    There was 1 error!
       | M:
-          ^-- PrematureEnd(Metre)
-      | 
+      >   ^-- I've got to the end of the ABC tune before I'm ready.
+              I was in the middle of reading a time signature
 
 
 ## Getting started
