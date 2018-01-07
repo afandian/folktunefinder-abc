@@ -319,7 +319,7 @@ impl LexError {
                 buf.push_str("I found a header of '");
                 buf.push(chr);
                 buf.push_str("' but I don't understand it.\n");
-                
+
                 // TODO ugly
                 indent_and_append_lines(
                     indent,
@@ -399,9 +399,10 @@ impl LexError {
             &LexError::UnimplementedError(ident) => {
                 buf.push_str(
                     "I'm confused, sorry. Please email joe@afandian.com with your ABC \
-                              and quote number ");
+                              and quote number '",
+                );
                 buf.push_str(&ident.to_string());
-                buf.push_str("and I'll see if I can fix it.");
+                buf.push_str("' and I'll see if I can fix it.");
             }
         }
     }
@@ -533,7 +534,7 @@ fn read(ctx: Context) -> LexResult {
                                     ctx,
                                     start_offset,
                                     LexError::UnimplementedError(1),
-                                )
+                                );
                             }
 
                             // Default note length.
@@ -691,9 +692,12 @@ impl<'a> Iterator for Lexer<'a> {
 }
 
 /// Parse an ABC input, return nicely formatted error message and number of lex errors.
-pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, usize, LexError)>) -> (usize, u32, String) {
-    const ABC_PREFIX: &str = "  | ";
-    const ERR_PREFIX: &str = "  > ";
+pub fn format_error_message<'a>(
+    input: &[char],
+    all_errors: Vec<(Context<'a>, usize, LexError)>,
+) -> (usize, u32, String) {
+    const ABC_PREFIX: &str = "   ";
+    const ERR_PREFIX: &str = "!  ";
 
     // let all_errors = Lexer::new(&input).collect_errors();
 
@@ -779,8 +783,8 @@ pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, us
             // We're going to print a pyramid of error messages to accommodate multiple errors per
             // line.  Outer loop decides which error we're going to print, inner loop does the
             // indentation.
-            let mut first_line = true;
-            for error_line in error_index.iter() {
+            let mut first_line_of_error = true;
+            for error_line in error_index.iter().rev() {
                 let mut indent = 0;
 
                 match *error_line {
@@ -790,39 +794,45 @@ pub fn format_error_message<'a>(input: &[char], all_errors: Vec<(Context<'a>, us
                         indent += ERR_PREFIX.len();
 
                         for error_char in error_index.iter() {
+
                             match *error_char {
                                 None => {
                                     buf.push(' ');
                                     indent += 1
                                 }
                                 Some(_) => {
-                                    buf.push(if error_line == error_char {
-                                        if first_line {
-                                            first_line = false;
-                                            '^'
-                                        } else {
-                                            '|'
-                                        }
+                                    buf.push(if first_line_of_error {
+                                        '▲'
                                     } else {
-                                        '-'
+                                        if error_line == error_char {
+                                            '┗'
+                                        } else {
+                                            '┃'
+                                        }
+
                                     });
+
+                                    if error_char == error_line {
+                                        buf.push_str(&" ");
+                                        indent += 2;
+                                        error.format(indent, &mut buf);
+
+                                        // If we reached the target error, don't keep scanning line.
+                                        break;
+                                    };
+
                                     indent += 1;
-
-                                    buf.push_str(&"-- ");
-                                    indent += 3;
-
-                                    error.format(indent, &mut buf);
-
-                                    // If we reached the target error, don't keep scanning the line.
-                                    break;
-
                                 }
                             }
                         }
                         buf.push('\n');
+                        first_line_of_error = false;
                     }
+
                 }
+
             }
+
 
             // Indent the next line.
             buf.push_str(ABC_PREFIX);
