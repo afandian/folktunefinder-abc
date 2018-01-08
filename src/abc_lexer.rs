@@ -79,6 +79,19 @@ impl<'a> Context<'a> {
             Some((self.skip(n), &self.c[self.i..self.i + n]))
         }
     }
+
+    /// Skip any whitespace at the offset.
+    fn skip_whitespace(&self) -> Context<'a> {
+        match self.first() {
+            
+            Some((ctx, ' ')) => ctx.skip_whitespace(),
+            
+            // Non-matching character.
+            Some((_, _)) => *self,
+            
+            None => *self,
+        }
+    }
 }
 
 /// Read until delmiter character.
@@ -1003,6 +1016,26 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
             "Empty input can't take any."
         );
     }
+
+    #[test]
+    fn context_skip_whitespace() {
+        let empty = string_to_vec("".to_string());
+        let some = string_to_vec("   hello".to_string());
+        let none = string_to_vec("hello".to_string());
+
+        assert_eq!(Context::new(&empty).skip_whitespace(),
+                   Context::new(&empty),
+                   "skipwhitespace() on empty string makes no change");
+
+        assert_eq!(Context::new(&some).skip_whitespace(),
+                   Context::new(&some).skip(3),
+                   "skipwhitespace() skips to first non-whitespace character");
+
+        assert_eq!(Context::new(&none).skip_whitespace(),
+                   Context::new(&none).skip(0),
+                   "skipwhitespace() no change when no whitespace");        
+    }
+
 
     #[test]
     fn lexer_can_skip_err() {
