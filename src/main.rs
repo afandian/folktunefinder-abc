@@ -46,7 +46,7 @@ fn main_check() {
         return;
     }
 
-    
+
     let mut ast = tune_ast::TuneAst::new();
 
     tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars), &mut ast);

@@ -61,6 +61,24 @@ impl<'a> Context<'a> {
         let i = self.i + amount;
         Context { i, ..self }
     }
+
+    /// Take the first character, if there is one.
+    fn first(&self) -> Option<(Context<'a>, char)> {
+        if !self.has(1) {
+            None
+        } else {
+            Some((self.skip(1), self.c[self.i]))
+        }
+    }
+
+    /// Take the first n characters, if we have them.
+    fn take(&self, n: usize) -> Option<(Context<'a>, &'a [char])> {
+        if !self.has(n) {
+            None
+        } else {
+            Some((self.skip(n), &self.c[self.i..self.i + n]))
+        }
+    }
 }
 
 /// Read until delmiter character.
@@ -202,21 +220,21 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                 match read_number(ctx, NumberRole::UpperTimeSignature) {
                     Err((_, offset, err)) => LexResult::Error(whole_line_ctx, offset, err),
                     Ok((ctx, numerator)) => {
-                        if !(ctx.has(1) && ctx.c[ctx.i] == '/') {
-                            LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInMetre)
-                        } else {
-
-                            // Skip slash.
-                            let ctx = ctx.skip(1);
-
-                            match read_number(ctx, NumberRole::LowerTimeSignature) {
-                                Err((_, offset, err)) => {
-                                    LexResult::Error(whole_line_ctx, offset, err)
+                        match ctx.first() {
+                            None => LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInMetre),
+                            Some((ctx, '/')) => {
+                                match read_number(ctx, NumberRole::LowerTimeSignature) {
+                                    Err((_, offset, err)) => {
+                                        LexResult::Error(whole_line_ctx, offset, err)
+                                    }
+                                    Ok((ctx, denomenator)) => {
+                                        // Skip one character for the delimiter.
+                                        LexResult::T(ctx.skip(1), T::Metre(numerator, denomenator))
+                                    }
                                 }
-                                Ok((ctx, denomenator)) => {
-                                    // Skip one character for the delimiter.
-                                    LexResult::T(ctx.skip(1), T::Metre(numerator, denomenator))
-                                }
+                            }
+                            Some((ctx, _)) => {
+                                LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInMetre)
                             }
                         }
 
@@ -233,6 +251,9 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum During {
     Metre,
+
+    // General purpose header section.
+    Header,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -386,6 +407,13 @@ impl LexError {
                             &"I was in the middle of reading a time signature".to_string(),
                         )
                     }
+                    &During::Header => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I was in the middle of reading a header field".to_string(),
+                        )
+                    }
                 }
             }
             &LexError::UnexpectedBodyChar(chr) => {
@@ -450,149 +478,176 @@ pub enum T {
 /// Try to read a single T and return a new context.
 /// Note that there's a lot of aliasing of ctx in nested matches.
 fn read(ctx: Context) -> LexResult {
-    // Need to peek 1 ahead. If we can't, we'are at the end.
-    if !ctx.has(1) {
-        return LexResult::T(ctx, T::Terminal);
-    }
+    match ctx.first() {
+        None => LexResult::T(ctx, T::Terminal),
+        Some((ctx, first_char)) => {
 
-    let first_char = ctx.c[ctx.i];
+            match ctx.tune_section {
+                TuneSection::Header => {
 
-    match ctx.tune_section {
-        TuneSection::Header => {
-            match first_char {
-                // Text headers.
-                'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' | 'T' |
-                'W' | 'X' | 'Z' => {
-                    if !(ctx.has(2) && ctx.c[ctx.i + 1] == ':') {
-                        return LexResult::Error(ctx, ctx.i + 1, LexError::ExpectedColon);
-                    } else {
-                        match read_until(ctx, '\n') {
-                            Ok((ctx, chars)) => {
-                                // Skip field label and colon.
-                                let value: String = chars.iter().skip(2).collect();
+                    match first_char {
+                        // Text headers.
+                        'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' |
+                        'T' | 'W' | 'X' | 'Z' => {
+                            match ctx.first() {
+                                Some((ctx, ':')) => {
+                                    match read_until(ctx, '\n') {
+                                        Ok((ctx, chars)) => {
 
-                                // Strip whitespace including leading space and trailing newline
-                                let value = value.trim().to_string();
+                                            let value: String = chars.iter().collect();
 
-                                match first_char {
-                                    'A' => return LexResult::T(ctx, T::Area(value)),
-                                    'B' => return LexResult::T(ctx, T::Book(value)),
-                                    'C' => return LexResult::T(ctx, T::Composer(value)),
-                                    'D' => return LexResult::T(ctx, T::Discography(value)),
-                                    'F' => return LexResult::T(ctx, T::Filename(value)),
-                                    'G' => return LexResult::T(ctx, T::Group(value)),
-                                    'H' => return LexResult::T(ctx, T::History(value)),
-                                    'I' => return LexResult::T(ctx, T::Information(value)),
-                                    'N' => return LexResult::T(ctx, T::Notes(value)),
-                                    'O' => return LexResult::T(ctx, T::Origin(value)),
-                                    'S' => return LexResult::T(ctx, T::Source(value)),
-                                    'T' => return LexResult::T(ctx, T::Title(value)),
-                                    'W' => return LexResult::T(ctx, T::Words(value)),
-                                    'X' => return LexResult::T(ctx, T::X(value)),
-                                    'Z' => return LexResult::T(ctx, T::Transcription(value)),
+                                            // Strip whitespace including leading space and trailing
+                                            // newline
+                                            let value = value.trim().to_string();
 
-                                    // This can only happen if the above cases get out of sync.
-                                    _ => {
-                                        return LexResult::Error(
-                                            ctx,
-                                            ctx.i,
-                                            LexError::ExpectedFieldType(first_char),
-                                        )
+                                            match first_char {
+                                                'A' => LexResult::T(ctx, T::Area(value)),
+                                                'B' => LexResult::T(ctx, T::Book(value)),
+                                                'C' => LexResult::T(ctx, T::Composer(value)),
+                                                'D' => LexResult::T(ctx, T::Discography(value)),
+                                                'F' => LexResult::T(ctx, T::Filename(value)),
+                                                'G' => LexResult::T(ctx, T::Group(value)),
+                                                'H' => LexResult::T(ctx, T::History(value)),
+                                                'I' => LexResult::T(ctx, T::Information(value)),
+                                                'N' => LexResult::T(ctx, T::Notes(value)),
+                                                'O' => LexResult::T(ctx, T::Origin(value)),
+                                                'S' => LexResult::T(ctx, T::Source(value)),
+                                                'T' => LexResult::T(ctx, T::Title(value)),
+                                                'W' => LexResult::T(ctx, T::Words(value)),
+                                                'X' => LexResult::T(ctx, T::X(value)),
+                                                'Z' => LexResult::T(ctx, T::Transcription(value)),
+
+                                                // This can only happen if the above cases get out
+                                                // of sync.
+                                                _ => {
+                                                    LexResult::Error(
+                                                        ctx,
+                                                        ctx.i,
+                                                        LexError::ExpectedFieldType(first_char),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Err(ctx) => {
+                                            LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::ExpectedDelimiter('\n'),
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            Err(ctx) => {
-                                return LexResult::Error(
-                                    ctx,
-                                    ctx.i,
-                                    LexError::ExpectedDelimiter('\n'),
-                                )
+
+                                // Not a colon.
+                                Some((ctx, _)) => {
+                                    LexResult::Error(ctx, ctx.i, LexError::ExpectedColon)
+                                }
+
+                                // Unexpected end of file.
+                                None => {
+                                    LexResult::Error(
+                                        ctx,
+                                        ctx.i,
+                                        LexError::PrematureEnd(During::Header),
+                                    )
+                                }
                             }
                         }
+
+                        // Non-text headers.
+                        // Grouped for handling code.
+                        'K' | 'L' | 'M' | 'P' | 'Q' => {
+
+                            match ctx.first() {
+                                Some((ctx, ':')) => {
+                                    match first_char {
+
+                                        // Key signature.
+                                        // TODO remember to switch tune context.
+                                        'K' => {
+                                            // K signals a switch to the body section.
+                                            let ctx = ctx.in_body();
+
+                                            return LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::UnimplementedError(1),
+                                            );
+                                        }
+
+                                        // Default note length.
+                                        'L' => {
+                                            return LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::UnimplementedError(2),
+                                            )
+                                        }
+
+                                        // Metre.
+                                        'M' => return lex_metre(ctx, '\n'),
+
+                                        // Parts.
+                                        'P' => {
+                                            return LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::UnimplementedError(3),
+                                            )
+                                        }
+
+                                        // Tempo
+                                        'Q' => {
+                                            return LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::UnimplementedError(4),
+                                            )
+                                        }
+
+                                        // This can only happen if the above cases get out of sync.
+                                        _ => {
+                                            return LexResult::Error(
+                                                ctx,
+                                                ctx.i,
+                                                LexError::ExpectedFieldType(first_char),
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Not a colon.
+                                Some((ctx, _)) => {
+                                    LexResult::Error(ctx, ctx.i, LexError::ExpectedColon)
+                                }
+
+                                // Unexpected end of file.
+                                None => {
+                                    LexResult::Error(
+                                        ctx,
+                                        ctx.i,
+                                        LexError::PrematureEnd(During::Header),
+                                    )
+                                }
+                            }
+                        }
+
+                        // Anything else in the header is unrecognised.
+                        _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedHeaderLine),
                     }
                 }
 
-                // Non-text headers.
-                // Grouped for handling code.
-                'K' | 'L' | 'M' | 'P' | 'Q' => {
-                    if !(ctx.has(2) && ctx.c[ctx.i + 1] == ':') {
-                        return LexResult::Error(ctx, ctx.i, LexError::ExpectedColon);
-                    } else {
-                        let start_offset = ctx.i;
+                TuneSection::Body => {
+                    match first_char {
+                        '\n' => LexResult::T(ctx.skip(1), T::Newline),
 
-                        // Skip colon and field.
-                        let ctx = ctx.skip(2);
-
-                        match first_char {
-                            // Key signature.
-                            // TODO remember to switch tune context.
-                            'K' => {
-                                // K signals a switch to the body section.
-                                let ctx = ctx.in_body();
-
-                                return LexResult::Error(
-                                    ctx,
-                                    start_offset,
-                                    LexError::UnimplementedError(1),
-                                );
-                            }
-
-                            // Default note length.
-                            'L' => {
-                                return LexResult::Error(
-                                    ctx,
-                                    start_offset,
-                                    LexError::UnimplementedError(2),
-                                )
-                            }
-
-                            // Metre.
-                            'M' => return lex_metre(ctx, '\n'),
-
-                            // Parts.
-                            'P' => {
-                                return LexResult::Error(
-                                    ctx,
-                                    start_offset,
-                                    LexError::UnimplementedError(3),
-                                )
-                            }
-
-                            // Tempo
-                            'Q' => {
-                                return LexResult::Error(
-                                    ctx,
-                                    start_offset,
-                                    LexError::UnimplementedError(4),
-                                )
-                            }
-
-                            // This can only happen if the above cases get out of sync.
-                            _ => {
-                                return LexResult::Error(
-                                    ctx,
-                                    start_offset,
-                                    LexError::ExpectedFieldType(first_char),
-                                )
-                            }
-                        }
+                        // TODO all tune body entities.
+                        _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
                     }
                 }
-
-                // Anything else in the header is unrecognised.
-                _ => return LexResult::Error(ctx, ctx.i, LexError::UnexpectedHeaderLine),
-            };
-        }
-
-        TuneSection::Body => {
-            match first_char {
-                '\n' => return LexResult::T(ctx.skip(1), T::Newline),
-
-                // TODO all tune body entities.
-                _ => return LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
             }
         }
-    };
+    }
 }
 
 /// A stateful lexer for an ABC string.
@@ -873,44 +928,79 @@ B2EG2EF3|B2EG2E FED|B2EG2EF3|B2dd2B AFD:|
 B2=ce2fg3|B2d g2e dBA|B2=ce2fg2a|b2ag2e dBA:|
 B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
 
+
     #[test]
     fn context_has() {
-        let butterfly = &(string_to_vec(String::from(BUTTERFLY)));
-
-        let context = Context::new(butterfly);
-        assert_eq!(
-            context.has(0),
-            true,
-            "A full string has at least 0 more characters"
-        );
-        assert_eq!(
-            context.has(1),
-            true,
-            "A full string has at least 1 more characters"
-        );
-        assert_eq!(
-            context.has(2),
-            true,
-            "A full string has at least 2 more characters"
-        );
-
-        let x = &(String::from("x").chars().collect::<Vec<char>>()[..]);
-        let context = Context::new(x);
+        //
+        // Empty
+        //
+        let empty = string_to_vec(String::from(EMPTY));
+        let some = string_to_vec(String::from(BUTTERFLY));
+        let empty_context = Context::new(&empty);
+        let some_context = Context::new(&some);
 
         assert_eq!(
-            context.has(0),
+            empty_context.has(0),
             true,
-            "A one-length string has at least 0 more characters"
+            "Empty string has at least 0 characters"
         );
+
         assert_eq!(
-            context.has(1),
-            true,
-            "A one-length string has at least 1 more characters"
+            empty_context.take(0),
+            Some((empty_context, &(vec![])[..])),
+            "Empty input take zero returns empty, context unchanged."
         );
+
         assert_eq!(
-            context.has(2),
+            empty_context.has(1),
             false,
-            "A one-length string has NOT got at least 2 more characters"
+            "Empty string doesn't have one characters."
+        );
+
+        assert_eq!(
+            empty_context.has(20),
+            false,
+            "Empty string doesn't lots of characters."
+        );
+
+        assert_eq!(empty_context.take(5), None, "Empty input can't take any.");
+
+
+        //
+        // Non-empty
+        //
+
+        assert_eq!(
+            some_context.has(0),
+            true,
+            "Empty string has at least 0 characters"
+        );
+
+        assert_eq!(
+            some_context.take(0),
+            Some((some_context, &(vec![])[..])),
+            "Empty input take zero returns subsequence, context reflects this."
+        );
+
+        assert_eq!(
+            some_context.has(1),
+            true,
+            "Empty string has one characters."
+        );
+
+        assert_eq!(
+            some_context.has(20),
+            true,
+            "Empty string has lots of characters."
+        );
+
+        assert_eq!(
+            some_context.take(5),
+            Some((
+                some_context.skip(5),
+                &(vec!['X', ':', '2', '4', '\n'])[..],
+            )),
+            "Empty input can't take any."
         );
     }
 
@@ -1046,6 +1136,18 @@ M:2/4
         // Header without colon.
         match read(Context::new(&(string_to_vec("TNoColon".to_string())))) {
             LexResult::Error(_, _, LexError::ExpectedColon) => {
+                assert!(
+                    true,
+                    "Should get ExpectedColon there isn't a newline available"
+                )
+            }
+            _ => assert!(false),
+        }
+
+
+        // Header with unexpected termination.
+        match read(Context::new(&(string_to_vec("T".to_string())))) {
+            LexResult::Error(_, _, LexError::PrematureEnd(During::Header)) => {
                 assert!(
                     true,
                     "Should get ExpectedColon there isn't a newline available"
