@@ -2,7 +2,7 @@
 //! Turns an ABC token stream into a more useful structure.
 
 use abc_lexer as l;
-
+use music;
 
 /// Vocabulary of object types.
 /// These are similar but different to the various lexer tokens.
@@ -24,13 +24,16 @@ enum HeaderField {
     X(String),
     Transcription(String),
     Metre(u32, u32),
+    KeySignature(music::PitchClass, music::Mode),
 }
+
 
 #[derive(Debug)]
 pub struct TuneAst {
     headers: Vec<HeaderField>,
     errors: Vec<(usize, l::LexError)>,
 }
+
 
 impl TuneAst {
     pub fn new() -> TuneAst {
@@ -46,6 +49,21 @@ impl TuneAst {
 
     fn add_error(&mut self, index: usize, error: l::LexError) {
         self.errors.push((index, error));
+    }
+
+    fn close_beam(&mut self) {
+        // TODO stub
+        println!("STUB: Close beam");
+    }
+
+    fn close_bar(&mut self) {
+        // TODO stub
+        println!("STUB: Close bar");
+    }
+
+    fn append_note(&mut self, note: music::Note) {
+        // TODO stub
+        println!("STUB: Note: {:?}", note);
     }
 }
 
@@ -84,6 +102,16 @@ pub fn read_from_lexer(lexer: l::Lexer, ast: &mut TuneAst) {
                     l::T::Metre(numerator, denomenator) => {
                         ast.add_header(HeaderField::Metre(numerator, denomenator))
                     }
+                    l::T::KeySignature(pitch_class, mode) => {
+                        ast.add_header(HeaderField::KeySignature(pitch_class, mode))
+                    }
+                    // Pass for now. We'll need to build some kind of tree.
+                    l::T::Barline(barline) => {
+                        ast.close_beam();
+                        ast.close_bar();
+                    }
+                    l::T::Note(note) => ast.append_note(note),
+                    l::T::BeamBreak => ast.close_beam(),
                 }
             }
 

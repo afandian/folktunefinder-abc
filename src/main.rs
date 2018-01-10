@@ -11,6 +11,7 @@ mod ngram;
 mod text;
 mod tune_ast;
 mod viz;
+mod music;
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {

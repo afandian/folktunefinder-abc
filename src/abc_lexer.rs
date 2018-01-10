@@ -5,6 +5,16 @@
 ///! When lex_* and read_* functions return errors, they should leave the context in the most
 ///! helpful state so that the next token has a good chance at understanding it.
 ///! e.g. don't bomb out half way through the time signature.
+///! lex_functions are relatively context-free and return a top-level token wrapped in a LexResult.
+///! They are called in a context where the token is expected, and raise an error when an unexpected
+///! character was found.
+///! read_functions are helpers, often represent optional branches, and generally return an Option.
+///!  They are called speculatively, and simply return an option.
+///! Context is a lightweight immutable pointer into a char slice. There's heavy (hopefully
+///! sensible) use of shadowing / rebinding of 'ctx' variables, so check the scope!
+
+use std::fmt;
+use music;
 
 /// Which bit of the tune are we in?
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -15,7 +25,7 @@ enum TuneSection {
 
 /// Context required to lex an ABC String.
 /// Context object is immutable for simpler state and testing.
-#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub struct Context<'a> {
     /// The ABC tune content as a vector of potentially multibyte characters.
     /// Stored as a slice of chars so we can peek.
@@ -71,6 +81,15 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// Peek at the first character, if there is one, but don't increment offset.
+    fn peek_first(&self) -> Option<(Context<'a>, char)> {
+        if !self.has(1) {
+            None
+        } else {
+            Some((*self, self.c[self.i]))
+        }
+    }
+
     /// Take the first n characters, if we have them.
     fn take(&self, n: usize) -> Option<(Context<'a>, &'a [char])> {
         if !self.has(n) {
@@ -97,7 +116,40 @@ impl<'a> Context<'a> {
             }
         }
     }
+
+    /// Does the context start with the given string?
+    fn starts_with_insensitive_eager(&self, prefix: &'a [char]) -> (Context<'a>, bool) {
+        let len = prefix.len();
+        if self.i + len > self.l {
+            (*self, false)
+        } else {
+            for i in 0..len {
+
+                // If there's no match return original context's offset.
+                if self.c[self.i + i].to_uppercase().next() != prefix[i].to_uppercase().next() {
+                    return (*self, false);
+                }
+            }
+
+            (self.skip(len), true)
+        }
+    }
+
+    /// The content from the offset onwards.
+    fn rest(&self) -> &'a [char] {
+        &self.c[self.i..]
+    }
 }
+
+impl<'a> fmt::Debug for Context<'a> {
+    /// Printing the entire buffer makes test debugging unreadable.
+    /// Print only the offset and length.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Ctx: {{ i: {}, length: {} }}", self.i, self.l)
+    }
+}
+
+
 
 /// Read until delmiter character.
 /// Return that slice plus the content.
@@ -213,7 +265,6 @@ fn read_number<'a>(
 
 /// Lex a metre declaration, e.g. "2/4" or "C|".
 fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
-
     // Read the whole line. This does two things:
     // 1 - Check that the field is actually delimited.
     // 2 - Provide a slice that we can compare to literal values like "C|".
@@ -265,6 +316,345 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     }
 }
 
+/// Lex a key note, e.g. "C", "Bf", "F Flat".
+fn read_key_note<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::PitchClass)> {
+    let (ctx, diatonic) = match ctx.first() {
+        Some((ctx, 'A')) => (ctx, Some(music::DiatonicPitchClass::A)),
+        Some((ctx, 'B')) => (ctx, Some(music::DiatonicPitchClass::B)),
+        Some((ctx, 'C')) => (ctx, Some(music::DiatonicPitchClass::C)),
+        Some((ctx, 'D')) => (ctx, Some(music::DiatonicPitchClass::D)),
+        Some((ctx, 'E')) => (ctx, Some(music::DiatonicPitchClass::E)),
+        Some((ctx, 'F')) => (ctx, Some(music::DiatonicPitchClass::F)),
+        Some((ctx, 'G')) => (ctx, Some(music::DiatonicPitchClass::G)),
+
+        // If there's no key note, just return the current context unchanged.
+        _ => (ctx, None),
+    };
+
+    let (ctx, accidental) = match diatonic {
+        // If there was no key note, don't try and match an accidental.
+        None => (ctx, None),
+
+        // If there was a key note, try and read an accidental.
+        // Read longest ones first.
+        Some(_) => {
+            if let (ctx, true) = ctx.starts_with_insensitive_eager(&['f', 'l', 'a', 't']) {
+                (ctx, Some(music::Accidental::Flat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
+                &['s', 'h', 'a', 'r', 'p'],
+            )
+            {
+                (ctx, Some(music::Accidental::Sharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
+                &['n', 'a', 't', 'u', 'r', 'a', 'l'],
+            )
+            {
+                (ctx, Some(music::Accidental::Natural))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['f', 'f']) {
+                (ctx, Some(music::Accidental::DoubleFlat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['s', 's']) {
+                (ctx, Some(music::Accidental::DoubleFlat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['b', 'b']) {
+                (ctx, Some(music::Accidental::DoubleSharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['#', '#']) {
+                (ctx, Some(music::Accidental::DoubleSharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['♯', '♯']) {
+                (ctx, Some(music::Accidental::DoubleSharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['♭', '♭']) {
+                (ctx, Some(music::Accidental::DoubleFlat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['f']) {
+                (ctx, Some(music::Accidental::Flat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['s']) {
+                (ctx, Some(music::Accidental::Sharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['b']) {
+                (ctx, Some(music::Accidental::Flat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['#']) {
+                (ctx, Some(music::Accidental::Sharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['♯']) {
+                (ctx, Some(music::Accidental::Sharp))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['♭']) {
+                (ctx, Some(music::Accidental::Flat))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['=']) {
+                (ctx, Some(music::Accidental::Natural))
+            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['♮']) {
+                (ctx, Some(music::Accidental::Natural))
+            } else {
+                (ctx, None)
+            }
+        }
+    };
+
+    match diatonic {
+        Some(diatonic) => Some((ctx, music::PitchClass(diatonic, accidental))),
+        _ => None,
+    }
+}
+
+/// Read a musical mode.
+pub fn read_mode<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::Mode)> {
+    let ctx = ctx.skip_whitespace();
+
+    // Read both long and short forms, and leave ctx at the end if whichever matched.
+    // There may be more tokens to follow after this, so it's not enough just to take 'maj',
+    // we must search for 'major' first.
+    if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'a', 'j', 'o', 'r']) {
+        Some((ctx, music::Mode::Major))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'i', 'n', 'o', 'r']) {
+        Some((ctx, music::Mode::Minor))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'y', 'd', 'i', 'a', 'n']) {
+        Some((ctx, music::Mode::Lydian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['i', 'o', 'n', 'i', 'a', 'n']) {
+        Some((ctx, music::Mode::Ionian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
+        &['m', 'i', 'x', 'o', 'l', 'y', 'd', 'i', 'a', 'n'],
+    )
+    {
+        Some((ctx, music::Mode::Mixolydian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['d', 'o', 'r', 'i', 'a', 'n']) {
+        Some((ctx, music::Mode::Dorian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
+        &['a', 'e', 'o', 'l', 'i', 'a', 'n'],
+    )
+    {
+        Some((ctx, music::Mode::Aeolian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
+        &['p', 'h', 'r', 'y', 'g', 'i', 'a', 'n'],
+    )
+    {
+        Some((ctx, music::Mode::Phrygian))
+
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'a', 'j']) {
+        Some((ctx, music::Mode::Major))
+
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'i', 'n']) {
+        Some((ctx, music::Mode::Minor))
+
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'o', 'c']) {
+        Some((ctx, music::Mode::Locrian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'y', 'd']) {
+        Some((ctx, music::Mode::Lydian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['i', 'o', 'n']) {
+        Some((ctx, music::Mode::Ionian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'i', 'x']) {
+        Some((ctx, music::Mode::Mixolydian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['d', 'o', 'r']) {
+        Some((ctx, music::Mode::Dorian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['a', 'e', 'o']) {
+        Some((ctx, music::Mode::Aeolian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['p', 'h', 'r']) {
+        Some((ctx, music::Mode::Phrygian))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'o', 'c']) {
+        Some((ctx, music::Mode::Locrian))
+    } else {
+        None
+    }
+}
+
+/// Read a fractional duration. This can be notated as zero characters.
+fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::FractionalDuration) {
+
+    // Get a number, if present, or 1.
+    let (ctx, numerator) = match read_number(ctx, NumberRole::NoteDurationNumerator) {
+        Ok((ctx, val)) => (ctx, val),
+        Err((ctx, _, _)) => (ctx, 1),
+    };
+
+    // Read a slash, if there is one.
+    let (ctx, denomenator) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&['/']) {
+        // If there is a slash then read the denomenator (which can be empty).
+        match read_number(ctx, NumberRole::NoteDurationNumerator) {
+            Ok((ctx, val)) => (ctx, val),
+
+            // No number after the slash, default to 1.
+            Err((ctx, _, _)) => (ctx, 1),
+        }
+
+
+    } else {
+        // No slash, so don't expect to read a denomenator.
+        (ctx, 1)
+    };
+
+
+
+    (ctx, music::FractionalDuration(numerator, denomenator))
+}
+
+
+fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
+    match read_until(ctx, delimiter) {
+        Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::KeySignature)),
+
+        // Although this context is discareded for parsing, it is used to return errors,
+        // as it enables the lexer to continue at the next token.
+        Ok((whole_line_ctx, content)) => {
+            if let Some((ctx, key_note)) = read_key_note(ctx) {
+
+                // TODO: Assuming empty means 'major'. Is this correct for at the lexer?
+                // Or maybe the AST-level representation should handle the behaviour.
+                let (ctx, mode) = read_mode(ctx).unwrap_or((ctx, music::Mode::Major));
+
+                // TODO extras like specific accidentals?
+
+                // Skip to end of delimited sequence (line or bracket).
+                LexResult::T(whole_line_ctx, T::KeySignature(key_note, mode))
+            } else {
+                // TODO: There may be an alternative to a key-note. May need to amend this when
+                // fuzzing with real-world inputs.
+                LexResult::Error(ctx, ctx.i, LexError::UnrecognisedKeyNote)
+            }
+        }
+    }
+}
+
+/// Lex a barline, when it is expected.
+/// TODO all tests for this!
+fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
+    if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: true,
+                repeat_after: true,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: false,
+                repeat_after: true,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: true,
+                repeat_after: false,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: true,
+                repeat_after: true,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: true,
+                repeat_after: true,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: false,
+                repeat_after: false,
+            }),
+        )
+
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: true,
+                repeat_after: false,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: false,
+                repeat_after: false,
+            }),
+        )
+    } else {
+        LexResult::Error(ctx, ctx.i, LexError::UnrecognisedBarline)
+    }
+}
+
+fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
+    // Optional accidental.
+
+    let (ctx, accidental) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&['^', '^']) {
+        (ctx, Some(music::Accidental::DoubleSharp))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['^', '^']) {
+        (ctx, Some(music::Accidental::DoubleSharp))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['_', '_']) {
+        (ctx, Some(music::Accidental::DoubleFlat))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['^']) {
+        (ctx, Some(music::Accidental::Sharp))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['_']) {
+        (ctx, Some(music::Accidental::Flat))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['=']) {
+        (ctx, Some(music::Accidental::Natural))
+    } else {
+        (ctx, None)
+    };
+
+
+    let (ctx, diatonic, octave) = match ctx.first() {
+        Some((ctx, 'A')) => (ctx, Some(music::DiatonicPitchClass::A), 0),
+        Some((ctx, 'B')) => (ctx, Some(music::DiatonicPitchClass::B), 0),
+        Some((ctx, 'C')) => (ctx, Some(music::DiatonicPitchClass::C), 0),
+        Some((ctx, 'D')) => (ctx, Some(music::DiatonicPitchClass::D), 0),
+        Some((ctx, 'E')) => (ctx, Some(music::DiatonicPitchClass::E), 0),
+        Some((ctx, 'F')) => (ctx, Some(music::DiatonicPitchClass::F), 0),
+        Some((ctx, 'G')) => (ctx, Some(music::DiatonicPitchClass::G), 0),
+        Some((ctx, 'a')) => (ctx, Some(music::DiatonicPitchClass::A), 1),
+        Some((ctx, 'b')) => (ctx, Some(music::DiatonicPitchClass::B), 1),
+        Some((ctx, 'c')) => (ctx, Some(music::DiatonicPitchClass::C), 1),
+        Some((ctx, 'd')) => (ctx, Some(music::DiatonicPitchClass::D), 1),
+        Some((ctx, 'e')) => (ctx, Some(music::DiatonicPitchClass::E), 1),
+        Some((ctx, 'f')) => (ctx, Some(music::DiatonicPitchClass::F), 1),
+        Some((ctx, 'g')) => (ctx, Some(music::DiatonicPitchClass::G), 1),
+
+        _ => (ctx, None, 0),
+    };
+
+    // Optional octave modifier.
+    let (ctx, octave) = match ctx.peek_first() {
+        Some((ctx, ',')) => (ctx, octave - 1),
+        Some((ctx, '\'')) => (ctx, octave + 1),
+        _ => (ctx, 0),
+    };
+
+    // Duration has a few different representations, including zero characters.
+    let (ctx, duration) = read_fractional_duration(ctx);
+
+    if let Some(diatonic) = diatonic {
+        LexResult::T(
+            ctx,
+            T::Note(music::Note(
+                music::Pitch(
+                    music::PitchClass(diatonic, accidental),
+                    octave,
+                ),
+                duration,
+            )),
+        )
+    } else {
+        LexResult::Error(ctx, ctx.i, LexError::UnrecognisedNote)
+    }
+}
+
+
+
 // The activity we were undertaking at the time when something happened.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum During {
@@ -272,12 +662,16 @@ pub enum During {
 
     // General purpose header section.
     Header,
+
+    KeySignature,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum NumberRole {
     UpperTimeSignature,
     LowerTimeSignature,
+    NoteDurationNumerator,
+    NoteDurationDenomenator,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
@@ -316,6 +710,13 @@ pub enum LexError {
     /// Marker value for tracking down callsite.
     /// TODO remove this when feature complete.
     UnimplementedError(u32),
+
+    // ExpectedKeySignature,
+    UnrecognisedKeyNote,
+
+    UnrecognisedBarline,
+
+    UnrecognisedNote,
 }
 
 /// Indent and print a line to a string buffer.
@@ -407,6 +808,24 @@ impl LexError {
                             &"I expected the second / lower part of a time signature.".to_string(),
                         )
                     }
+
+                    // NoteDurationNumerator and NoteDurationDenomenator shouldn't ever actually
+                    // occur as they are read in an optional context, but if they do, be polite.
+                    &NumberRole::NoteDurationNumerator => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I expected to find a number for a note length.".to_string(),
+                        )
+                    }
+
+                    &NumberRole::NoteDurationDenomenator => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I expected to find a number for a note length.".to_string(),
+                        )
+                    }
                 }
             }
             &LexError::ExpectedSlashInMetre => {
@@ -429,7 +848,14 @@ impl LexError {
                         indent_and_append_line(
                             indent,
                             buf,
-                            &"I was in the middle of reading a header field".to_string(),
+                            &"I was in the middle of reading a header field.".to_string(),
+                        )
+                    }
+                    &During::KeySignature => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I was in the middle of reading a key signature.".to_string(),
                         )
                     }
                 }
@@ -449,6 +875,18 @@ impl LexError {
                 );
                 buf.push_str(&ident.to_string());
                 buf.push_str("' and I'll see if I can fix it.");
+            }
+            &LexError::UnrecognisedKeyNote => {
+                buf.push_str(
+                    "I expected to find a tonic for a key signature, but didn't understand this.",
+                );
+            }
+            &LexError::UnrecognisedBarline => {
+                buf.push_str("I couldn't understand this bar line.");
+            }
+
+            &LexError::UnrecognisedNote => {
+                buf.push_str("I didn't understand how to read this note.");
             }
         }
     }
@@ -471,6 +909,7 @@ pub enum LexResult<'a> {
 pub enum T {
     Terminal,
     Newline,
+    BeamBreak,
 
     // Text header fields.
     Area(String),
@@ -491,17 +930,25 @@ pub enum T {
 
     // More interesting header fields.
     Metre(u32, u32),
+    KeySignature(music::PitchClass, music::Mode),
+
+    Barline(music::Barline),
+
+    Note(music::Note),
 }
 
 /// Try to read a single T and return a new context.
 /// Note that there's a lot of aliasing of ctx in nested matches.
 fn read(ctx: Context) -> LexResult {
-    match ctx.first() {
+    match ctx.peek_first() {
         None => LexResult::T(ctx, T::Terminal),
         Some((ctx, first_char)) => {
-
             match ctx.tune_section {
                 TuneSection::Header => {
+
+                    // We know that in this branch we always want to match on the first char, so can
+                    // safely skip now.
+                    let ctx = ctx.skip(1);
 
                     match first_char {
                         // Text headers.
@@ -575,22 +1022,21 @@ fn read(ctx: Context) -> LexResult {
                         // Non-text headers.
                         // Grouped for handling code.
                         'K' | 'L' | 'M' | 'P' | 'Q' => {
-
                             match ctx.first() {
                                 Some((ctx, ':')) => {
+
+                                    // Skip leading whitespace within the header.
+                                    let ctx = ctx.skip_whitespace();
                                     match first_char {
 
                                         // Key signature.
-                                        // TODO remember to switch tune context.
                                         'K' => {
-                                            // K signals a switch to the body section.
+
+                                            // K signals a switch to the body section, even if it
+                                            // failed to parse.
                                             let ctx = ctx.in_body();
 
-                                            return LexResult::Error(
-                                                ctx,
-                                                ctx.i,
-                                                LexError::UnimplementedError(1),
-                                            );
+                                            return lex_key_signature(ctx, '\n');
                                         }
 
                                         // Default note length.
@@ -657,7 +1103,13 @@ fn read(ctx: Context) -> LexResult {
 
                 TuneSection::Body => {
                     match first_char {
+                        ' ' => LexResult::T(ctx.skip(1), T::BeamBreak),
                         '\n' => LexResult::T(ctx.skip(1), T::Newline),
+
+                        '|' | ':' => lex_barline(ctx),
+
+                        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'A' | 'B' | 'C' | 'D' | 'E' |
+                        'F' | 'G' | '^' | '_' | '=' => lex_note(ctx),
 
                         // TODO all tune body entities.
                         _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
@@ -1031,19 +1483,19 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
         assert_eq!(
             Context::new(&empty).skip_whitespace(),
             Context::new(&empty),
-            "skipwhitespace() on empty string makes no change"
+            "skip_whitespace() on empty string makes no change"
         );
 
         assert_eq!(
             Context::new(&some).skip_whitespace(),
             Context::new(&some).skip(3),
-            "skipwhitespace() skips to first non-whitespace character"
+            "skip_whitespace() skips to first non-whitespace character"
         );
 
         assert_eq!(
             Context::new(&none).skip_whitespace(),
             Context::new(&none).skip(0),
-            "skipwhitespace() no change when no whitespace"
+            "skip_whitespace() no change when no whitespace"
         );
     }
 
@@ -1082,15 +1534,17 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
         );
     }
 
+    // Test for every header to make sure everything hangs together.
     #[test]
-    fn read_text_headers_test() {
+    fn read_headers_test() {
+        // Some have leading whitespace, which should be ignored.
         let input = &(string_to_vec(
             "A:AREA
 B:BOOK
 C:COMPOSER
 D:DISCOGRAPHY
 F:FILENAME
-G:GROUP
+G: GROUP
 H:HISTORY
 I:INFO
 N:NOTES
@@ -1101,12 +1555,18 @@ W:WORDS
 X:100
 Z:TRANSCRIPTION
 M:2/4
+M:        5/8
+K:    GFmaj
 "
                 .to_string(),
         ));
 
         let lexer = Lexer::new(input);
         let tokens = lexer.collect_tokens();
+
+        let err_lexer = Lexer::new(input);
+        let errors = err_lexer.collect_errors();
+        assert_eq!(errors.len(), 0, "Expected no errors but got: {:?}", errors);
 
         assert_eq!(
             tokens,
@@ -1127,6 +1587,11 @@ M:2/4
                 T::X("100".to_string()),
                 T::Transcription("TRANSCRIPTION".to_string()),
                 T::Metre(2, 4),
+                T::Metre(5, 8),
+                T::KeySignature(
+                    music::PitchClass(music::DiatonicPitchClass::G, Some(music::Accidental::Flat)),
+                    music::Mode::Major
+                ),
             ]
         );
 
@@ -1518,6 +1983,213 @@ M:2/4
         match read(context) {
             LexResult::T(_, T::Terminal) => assert!(true, "Empty results in Terminal character"),
             _ => assert!(false, "Terminal should be returned"),
+        }
+    }
+
+    #[test]
+    fn read_key_note_test() {
+        let input = &(string_to_vec(String::from(EMPTY)));
+        let context = Context::new(input);
+        match read_key_note(context) {
+            None => assert!(true, "Read key note empty string gives None"),
+            x => assert!(false, "Expected None: {:?}", x),
+        }
+
+        let input = &(string_to_vec("C".to_string()));
+        let context = Context::new(input);
+        match read_key_note(context) {
+            Some((_, music::PitchClass(music::DiatonicPitchClass::C, None))) => {
+                assert!(true, "Read diatonic key note only, followed by EOF")
+            }
+            x => assert!(false, "Expected diatonic pitch class: {:?}", x),
+        }
+
+        let input = &(string_to_vec("C\n".to_string()));
+        let ctx = Context::new(input);
+        match read_key_note(ctx) {
+            Some((new_ctx, music::PitchClass(music::DiatonicPitchClass::C, None))) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(1),
+                    "Read diatonic key note only, followed by something irrelevant"
+                )
+            }
+            x => assert!(false, "Expected diatonic pitch class: {:?}", x),
+        }
+
+        let input = &(string_to_vec("F#\n".to_string()));
+        let ctx = Context::new(input);
+        match read_key_note(ctx) {
+            Some((new_ctx,
+                  music::PitchClass(music::DiatonicPitchClass::F,
+                                    Some(music::Accidental::Sharp)))) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(2),
+                    "Read diatonic key note and accidental, followed by something irrelevant"
+                )
+            }
+            x => assert!(false, "Expected diatonic pitch class: {:?}", x),
+        }
+
+        let input = &(string_to_vec("Gf".to_string()));
+        let ctx = Context::new(input);
+        match read_key_note(ctx) {
+            Some((new_ctx,
+                  music::PitchClass(music::DiatonicPitchClass::G,
+                                    Some(music::Accidental::Flat)))) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(2),
+                    "Read diatonic key note and accidental, followed by EOF"
+                )
+            }
+            x => assert!(false, "Expected diatonic pitch class: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn read_mode_test() {
+
+        // Case insensitive long form, ignoring spaces.
+        // Test both, to ensure that the short one doesn't get matched, leaving ctx dangling in the
+        // middle of a word.
+        let input = &(string_to_vec("major".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(new_ctx, ctx.skip(5), "Read normal mode works")
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        };
+
+        let input = &(string_to_vec("MaJoR".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(5),
+                    "Read normal mode works, case insensitive"
+                )
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        }
+
+        let input = &(string_to_vec("     MaJoR".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(10),
+                    "Read normal mode works and skips leading whitespace, case insensitive"
+                )
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        }
+
+        // Case insensitive short form, ignoring spaces.
+        let input = &(string_to_vec("maj".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(new_ctx, ctx.skip(3), "Read normal mode works")
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        };
+
+        let input = &(string_to_vec("MaJ".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(3),
+                    "Read normal mode works and skips leading whitespace, case insensitive"
+                )
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        }
+
+        let input = &(string_to_vec("   MaJ".to_string()));
+        let ctx = Context::new(input);
+        match read_mode(ctx) {
+            Some((new_ctx, music::Mode::Major)) => {
+                assert_eq!(
+                    new_ctx,
+                    ctx.skip(6),
+                    "Read short form mode works, case insensitive, skipping whitespace"
+                )
+            }
+            x => assert!(false, "Expected mode got: {:?}", x),
+        }
+
+    }
+
+    #[test]
+    fn starts_with_insensitive_eager_test() {
+        let input = &(string_to_vec("".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&[]) {
+            (new_ctx, true) => assert_eq!(ctx, new_ctx, "Empty string starts with empty string"),
+            _ => assert!(false, "Expected match"),
+        }
+
+        let input = &(string_to_vec("hello".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&[]) {
+            (new_ctx, true) => assert_eq!(ctx, new_ctx, "Some string starts with empty string"),
+            _ => assert!(false, "Expected match"),
+        }
+
+        let input = &(string_to_vec("hello world".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&['h', 'e', 'l', 'l', 'o']) {
+            (new_ctx, true) => {
+                assert_eq!(
+                    ctx.skip(5),
+                    new_ctx,
+                    "Some string starts with its prefix and skip that lenght"
+                )
+            }
+            _ => assert!(false, "Expected match"),
+        }
+
+        let input = &(string_to_vec("hello world".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&['H', 'e', 'L', 'l', 'O']) {
+            (new_ctx, true) => {
+                assert_eq!(
+                    ctx.skip(5),
+                    new_ctx,
+                    "Some string starts with its prefix different case and skip that lenght"
+                )
+            }
+            _ => assert!(false, "Expected match"),
+        }
+
+        let input = &(string_to_vec("hello world".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&['h', 'e', 'l', 'l', 'X']) {
+            (new_ctx, false) => {
+                assert_eq!(
+                    ctx,
+                    new_ctx,
+                    "Some string doesn't start with prefix that has non-matching char"
+                )
+            }
+            _ => assert!(false, "Expected false"),
+        }
+
+
+        let input = &(string_to_vec("hell".to_string()));
+        let ctx = Context::new(input);
+        match ctx.starts_with_insensitive_eager(&['h', 'e', 'l', 'l', 'o']) {
+            (new_ctx, false) => {
+                assert_eq!(ctx, new_ctx, "Prefix longer than context returns false.")
+            }
+            _ => assert!(false, "Expected false"),
         }
     }
 }
