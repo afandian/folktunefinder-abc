@@ -47,11 +47,8 @@ fn main_check() {
         return;
     }
 
-
-    let mut ast = tune_ast::TuneAst::new();
-
-    tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars), &mut ast);
-    println!("Tune: {:?}", ast);
+    let ast = tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    println!("Tune: {:#?}", ast);
 }
 
 fn main_unrecognised() {

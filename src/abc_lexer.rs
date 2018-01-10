@@ -453,29 +453,37 @@ pub fn read_mode<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::Mode)> {
 /// Read a fractional duration. This can be notated as zero characters.
 fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::FractionalDuration) {
 
-    // Get a number, if present, or 1.
+    // Get a number, if present.
     let (ctx, numerator) = match read_number(ctx, NumberRole::NoteDurationNumerator) {
-        Ok((ctx, val)) => (ctx, val),
-        Err((ctx, _, _)) => (ctx, 1),
+        Ok((ctx, val)) => (ctx, Some(val)),
+        Err((ctx, _, _)) => (ctx, None),
     };
 
     // Read a slash, if there is one.
     let (ctx, denomenator) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&['/']) {
         // If there is a slash then read the denomenator (which can be empty).
         match read_number(ctx, NumberRole::NoteDurationNumerator) {
-            Ok((ctx, val)) => (ctx, val),
+            Ok((ctx, val)) => (ctx, Some(val)),
 
             // No number after the slash, default to 1.
-            Err((ctx, _, _)) => (ctx, 1),
+            Err((ctx, _, _)) => (ctx, None),
         }
 
 
     } else {
         // No slash, so don't expect to read a denomenator.
-        (ctx, 1)
+        (ctx, None)
     };
 
-
+    // We need to handle the shorthand, as missing numbers mean different things in different
+    // contexts.
+    let (numerator, denomenator) = match (numerator, denomenator) {
+        // "/" is a special case, which means "1/2".
+        (None, None) => (1, 2),
+        (None, Some(d)) => (1, d),
+        (Some(n), None) => (n, 1),
+        (Some(n), Some(d)) => (n, d),
+    };
 
     (ctx, music::FractionalDuration(numerator, denomenator))
 }
