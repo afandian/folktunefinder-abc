@@ -1,5 +1,10 @@
 //! Tune Abstract Syntax Tree
 //! Turns an ABC token stream into a more useful structure.
+//! Beacuse musical structures suffer from "overlapping markup" the tree can't have a strictly 
+//! hierarchical structure. Instead, those features are represented as "milestone" entities.
+//! (see https://en.wikipedia.org/wiki/Overlapping_markup )
+//! So the "AST" is more of a LA(0) grammar over a sequence.
+
 
 use abc_lexer as l;
 use music;
@@ -33,7 +38,10 @@ enum HeaderField {
 enum Entity {
     Barline(music::Barline),
     Note(music::Note),
-    BeamGroup(Vec<Entity>),
+
+    // Milestone entities.
+    OpenBeam,
+    CloseBeam,
 }
 
 #[derive(Debug)]
@@ -56,18 +64,19 @@ impl TuneAst {
 }
 
 /// Read from a Lexer and build a new AST.
-pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst{
+pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
     // The sequence of tune entities.
     // This will mostly be BarLines and BeamGroups.
     // All notes will live in a BeamGroup, possibly as singletons.
-    let mut entities: Vec<Entity> = vec![];
-
-    // The current beam group that we're building up.
-    let mut current_beam_group: Vec<Entity> = vec![];
-
     let mut headers: Vec<HeaderField> = vec![];
     let mut errors: Vec<(usize, l::LexError)> = vec![];
     let mut entities: Vec<Entity> = vec![];
+
+    // Running state.
+
+    // What offset in the entities is the start of the current beam group?
+    // There's always a beam group in play.
+    let mut start_of_beam_group: Option<usize> = None;
 
     for token in lexer {
         match token {
@@ -105,19 +114,45 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst{
                     l::T::KeySignature(pitch_class, mode) => {
                         headers.push(HeaderField::KeySignature(pitch_class, mode))
                     }
-                    // Pass for now. We'll need to build some kind of tree.
+
                     l::T::Barline(barline) => {
-                        entities.push(Entity::BeamGroup(current_beam_group));
-                        current_beam_group = vec![];
+
+                        // If we're in a beam group, close it.
+                        if let Some(start_i) = start_of_beam_group {
+
+                            let beam_length = entities.len() - start_i;
+                            if beam_length > 1 {
+                                entities.push(Entity::CloseBeam);
+                                entities.insert(start_i, Entity::OpenBeam);
+                            }
+                        }
+
+                        start_of_beam_group = None;
                         entities.push(Entity::Barline(barline));
                     }
                     l::T::Note(note) => {
-                        // Push to the beam group, not directly to `entities`.
-                        current_beam_group.push(Entity::Note(note));
+
+                        // If we're not in a beam group then start one, as it's the first note
+                        // we've seen since the last one.
+                        match start_of_beam_group {
+                            None => start_of_beam_group = Some(entities.len()),
+                            _ => (),
+                        }
+
+                        entities.push(Entity::Note(note));
                     }
                     l::T::BeamBreak => {
-                        entities.push(Entity::BeamGroup(current_beam_group));
-                        current_beam_group = vec![];
+                        // If there's already an open beam group, wrap it up and close it.
+                        if let Some(start_i) = start_of_beam_group {
+                            let beam_length = entities.len() - start_i;
+                            if beam_length > 1 {
+                                entities.push(Entity::CloseBeam);
+                                entities.insert(start_i, Entity::OpenBeam);
+                            }
+                        }
+
+                        // Start a new one.
+                        start_of_beam_group = Some(entities.len());
                     }
                 }
             }
@@ -125,14 +160,18 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst{
         }
     }
 
-    if current_beam_group.len() > 0 {
-        entities.push(Entity::BeamGroup(current_beam_group));
-        current_beam_group = vec![];
-    }
+    // Finally close if there's still an open beam group.
+if let Some(start_i) = start_of_beam_group {
+                            let beam_length = entities.len() - start_i;
+                            if beam_length > 1 {
+                                entities.push(Entity::CloseBeam);
+                                entities.insert(start_i, Entity::OpenBeam);
+                            }
+                        }
 
     return TuneAst {
         headers,
         errors,
         entities,
-    }
+    };
 }
