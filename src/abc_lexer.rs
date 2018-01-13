@@ -263,6 +263,44 @@ fn read_number<'a>(
     }
 }
 
+/// Lex a default note length, e.g. "1/9"
+fn lex_note_length<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
+    match read_until(ctx, delimiter) {
+        Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::Metre)),
+
+        Ok((whole_line_ctx, content)) => {
+            match read_number(ctx, NumberRole::UpperDefaultNoteLength) {
+                Err((_, offset, err)) => LexResult::Error(whole_line_ctx, offset, err),
+                Ok((ctx, numerator)) => {
+                    match ctx.first() {
+                        None => LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInNoteLength),
+                        Some((ctx, '/')) => {
+                            match read_number(ctx, NumberRole::LowerDefaultNoteLength) {
+                                Err((_, offset, err)) => {
+                                    LexResult::Error(whole_line_ctx, offset, err)
+                                }
+                                Ok((ctx, denomenator)) => {
+                                    // Skip one character for the delimiter.
+                                    LexResult::T(
+                                        ctx.skip(1),
+                                        T::DefaultNoteLength(
+                                            music::FractionalDuration(numerator, denomenator),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                        Some((ctx, _)) => {
+                            LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInNoteLength)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 /// Lex a metre declaration, e.g. "2/4" or "C|".
 fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     // Read the whole line. This does two things:
@@ -452,7 +490,6 @@ pub fn read_mode<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::Mode)> {
 
 /// Read a fractional duration. This can be notated as zero characters.
 fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::FractionalDuration) {
-
     // Get a number, if present.
     let (ctx, numerator) = match read_number(ctx, NumberRole::NoteDurationNumerator) {
         Ok((ctx, val)) => (ctx, Some(val)),
@@ -460,29 +497,45 @@ fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::Fractional
     };
 
     // Read a slash, if there is one.
-    let (ctx, denomenator) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&['/']) {
-        // If there is a slash then read the denomenator (which can be empty).
-        match read_number(ctx, NumberRole::NoteDurationNumerator) {
-            Ok((ctx, val)) => (ctx, Some(val)),
+    let (ctx, denomenator, has_slash) =
+        if let (ctx, true) = ctx.starts_with_insensitive_eager(&['/']) {
+            // If there is a slash then read the denomenator (which can be empty).
+            match read_number(ctx, NumberRole::NoteDurationNumerator) {
+                Ok((ctx, val)) => (ctx, Some(val), true),
 
-            // No number after the slash, default to 1.
-            Err((ctx, _, _)) => (ctx, None),
-        }
+                // No number after the slash, default to 1.
+                Err((ctx, _, _)) => (ctx, None, true),
+            }
 
 
-    } else {
-        // No slash, so don't expect to read a denomenator.
-        (ctx, None)
-    };
+        } else {
+            // No slash, so don't expect to read a denomenator.
+            (ctx, None, false)
+        };
 
     // We need to handle the shorthand, as missing numbers mean different things in different
     // contexts.
-    let (numerator, denomenator) = match (numerator, denomenator) {
-        // "/" is a special case, which means "1/2".
-        (None, None) => (1, 2),
-        (None, Some(d)) => (1, d),
-        (Some(n), None) => (n, 1),
-        (Some(n), Some(d)) => (n, d),
+    let (numerator, denomenator) = match (numerator, denomenator, has_slash) {
+        // e..g "/". Special case, which means "1/2".
+        (None, None, true) => (1, 2),
+
+        // e.g. "". Default note length.
+        (None, None, false) => (1, 1),
+
+        // e.g. "/2". divide by this amount.
+        (None, Some(d), true) => (1, d),
+
+        // e.g. "1/".
+        (Some(n), None, true) => (n, 1),
+
+        // e.g. "1/2".
+        (Some(n), Some(d), true) => (n, d),
+
+        // e.g. "2"
+        (Some(n), None, false) => (n, 1),
+
+        // This should never happen. If it does, use the standard note length.
+        _ => (1, 1),
     };
 
     (ctx, music::FractionalDuration(numerator, denomenator))
@@ -615,7 +668,6 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
         (ctx, None)
     };
 
-
     let (ctx, diatonic, octave) = match ctx.first() {
         Some((ctx, 'A')) => (ctx, Some(music::DiatonicPitchClass::A), 0),
         Some((ctx, 'B')) => (ctx, Some(music::DiatonicPitchClass::B), 0),
@@ -672,6 +724,8 @@ pub enum During {
     Header,
 
     KeySignature,
+
+    DefaultNoteLenth,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -680,6 +734,8 @@ pub enum NumberRole {
     LowerTimeSignature,
     NoteDurationNumerator,
     NoteDurationDenomenator,
+    UpperDefaultNoteLength,
+    LowerDefaultNoteLength,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
@@ -725,6 +781,8 @@ pub enum LexError {
     UnrecognisedBarline,
 
     UnrecognisedNote,
+
+    ExpectedSlashInNoteLength,
 }
 
 /// Indent and print a line to a string buffer.
@@ -834,6 +892,22 @@ impl LexError {
                             &"I expected to find a number for a note length.".to_string(),
                         )
                     }
+                    &NumberRole::UpperDefaultNoteLength => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I expected to find the first / upper part of a default note length."
+                                .to_string(),
+                        )
+                    }
+                    &NumberRole::LowerDefaultNoteLength => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I expected to find the second / lower part of a default note length."
+                                .to_string(),
+                        )
+                    }
                 }
             }
             &LexError::ExpectedSlashInMetre => {
@@ -866,6 +940,13 @@ impl LexError {
                             &"I was in the middle of reading a key signature.".to_string(),
                         )
                     }
+                    &During::DefaultNoteLenth => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I was in the middle of reading a default note length.".to_string(),
+                        )
+                    }
                 }
             }
             &LexError::UnexpectedBodyChar(chr) => {
@@ -889,13 +970,18 @@ impl LexError {
                     "I expected to find a tonic for a key signature, but didn't understand this.",
                 );
             }
+            &LexError::ExpectedSlashInNoteLength => {
+                buf.push_str(
+                    "I expected to find a slash character in a default note length.",
+                );
+            }
             &LexError::UnrecognisedBarline => {
                 buf.push_str("I couldn't understand this bar line.");
             }
-
             &LexError::UnrecognisedNote => {
                 buf.push_str("I didn't understand how to read this note.");
             }
+
         }
     }
 }
@@ -939,6 +1025,7 @@ pub enum T {
     // More interesting header fields.
     Metre(u32, u32),
     KeySignature(music::PitchClass, music::Mode),
+    DefaultNoteLength(music::FractionalDuration),
 
     Barline(music::Barline),
 
@@ -1048,13 +1135,7 @@ fn read(ctx: Context) -> LexResult {
                                         }
 
                                         // Default note length.
-                                        'L' => {
-                                            return LexResult::Error(
-                                                ctx,
-                                                ctx.i,
-                                                LexError::UnimplementedError(2),
-                                            )
-                                        }
+                                        'L' => return lex_note_length(ctx, '\n'),
 
                                         // Metre.
                                         'M' => return lex_metre(ctx, '\n'),
@@ -1564,6 +1645,7 @@ X:100
 Z:TRANSCRIPTION
 M:2/4
 M:        5/8
+L:1/8
 K:    GFmaj
 "
                 .to_string(),
@@ -1596,6 +1678,7 @@ K:    GFmaj
                 T::Transcription("TRANSCRIPTION".to_string()),
                 T::Metre(2, 4),
                 T::Metre(5, 8),
+                T::DefaultNoteLength(music::FractionalDuration(1, 8)),
                 T::KeySignature(
                     music::PitchClass(music::DiatonicPitchClass::G, Some(music::Accidental::Flat)),
                     music::Mode::Major

@@ -57,8 +57,64 @@ pub struct Barline {
 }
 
 /// A duration as a fraction of the default duration.
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct FractionalDuration(pub u32, pub u32);
+
+impl FractionalDuration {
+    /// Multiply this fractional duration by another.
+    /// Used to resolve a duration against a standard duration.
+    pub fn multiply(self, other: FractionalDuration) -> FractionalDuration {
+
+        let vulgar = FractionalDuration(self.0 * other.0, self.1 * other.1);
+
+        let max = u32::max(vulgar.0, vulgar.1);
+        for i in (1..max).rev() {
+            if (vulgar.0 % i == 0) && (vulgar.1 % i) == 0 {
+                return FractionalDuration(vulgar.0 / i, vulgar.1 / i);
+            }
+        }
+        return vulgar;
+    }
+}
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct Note(pub Pitch, pub FractionalDuration);
+
+impl Note {
+    /// Adjust this note's duration by mutiplying by a base.
+    pub fn resolve_duration(self, base_duration: FractionalDuration) -> Note {
+        Note(self.0, self.1.multiply(base_duration))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fractional_duration_multiply() {
+        assert_eq!(
+            FractionalDuration(1, 1).multiply(FractionalDuration(1, 4)),
+            FractionalDuration(1, 4),
+            "Resolving duration of 1 in 1/4 gives 1/4"
+        );
+
+        assert_eq!(
+            FractionalDuration(2, 1).multiply(FractionalDuration(1, 4)),
+            FractionalDuration(1, 2),
+            "Resolving duration of 1 in 1/4 gives simplified 1/2"
+        );
+
+        assert_eq!(
+            FractionalDuration(3, 1).multiply(FractionalDuration(1, 4)),
+            FractionalDuration(3, 4),
+            "Resolving dotted crotchet gives dotted crotchet (can't simplify further)."
+        );
+
+        assert_eq!(
+            FractionalDuration(1, 8).multiply(FractionalDuration(1, 2)),
+            FractionalDuration(1, 2).multiply(FractionalDuration(1, 8)),
+            "Multiply is commutative."
+        );
+    }
+}

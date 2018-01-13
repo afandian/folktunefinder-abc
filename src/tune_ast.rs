@@ -1,9 +1,14 @@
 //! Tune Abstract Syntax Tree
 //! Turns an ABC token stream into a more useful structure.
-//! Beacuse musical structures suffer from "overlapping markup" the tree can't have a strictly 
+//! Beacuse musical structures suffer from "overlapping markup" the tree can't have a strictly
 //! hierarchical structure. Instead, those features are represented as "milestone" entities.
 //! (see https://en.wikipedia.org/wiki/Overlapping_markup )
 //! So the "AST" is more of a LA(0) grammar over a sequence.
+
+// TODO: Multi-pitch note for co-incident notes.
+// TODO: syntax or lint - can co-incident notes have different durations? assume no and check.
+// TODO: bars with harmony - express as multi-part-bar. i.e. each bar has parts.
+// TODO: maybe if beam groups can't cross bars then it's fine?
 
 
 use abc_lexer as l;
@@ -72,6 +77,8 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
     let mut errors: Vec<(usize, l::LexError)> = vec![];
     let mut entities: Vec<Entity> = vec![];
 
+    let mut default_note_length = music::FractionalDuration(1, 4);
+
     // Running state.
 
     // What offset in the entities is the start of the current beam group?
@@ -115,6 +122,12 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
                         headers.push(HeaderField::KeySignature(pitch_class, mode))
                     }
 
+                    // This isn't stored as a header, it's kept as a running value for interpreting
+                    // durations.
+                    l::T::DefaultNoteLength(new_default_note_length) => {
+                        default_note_length = new_default_note_length;
+                    }
+
                     l::T::Barline(barline) => {
 
                         // If we're in a beam group, close it.
@@ -131,13 +144,14 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
                         entities.push(Entity::Barline(barline));
                     }
                     l::T::Note(note) => {
-
                         // If we're not in a beam group then start one, as it's the first note
                         // we've seen since the last one.
                         match start_of_beam_group {
                             None => start_of_beam_group = Some(entities.len()),
                             _ => (),
                         }
+
+                        let note = note.resolve_duration(default_note_length);
 
                         entities.push(Entity::Note(note));
                     }
@@ -161,13 +175,13 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
     }
 
     // Finally close if there's still an open beam group.
-if let Some(start_i) = start_of_beam_group {
-                            let beam_length = entities.len() - start_i;
-                            if beam_length > 1 {
-                                entities.push(Entity::CloseBeam);
-                                entities.insert(start_i, Entity::OpenBeam);
-                            }
-                        }
+    if let Some(start_i) = start_of_beam_group {
+        let beam_length = entities.len() - start_i;
+        if beam_length > 1 {
+            entities.push(Entity::CloseBeam);
+            entities.insert(start_i, Entity::OpenBeam);
+        }
+    }
 
     return TuneAst {
         headers,
