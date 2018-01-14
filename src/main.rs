@@ -10,8 +10,11 @@ mod midi;
 mod ngram;
 mod text;
 mod tune_ast;
+mod tune_ast_two;
 mod viz;
 mod music;
+mod typeset;
+mod svg;
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
@@ -33,28 +36,60 @@ fn main_check() {
 
     if num_errors > 0 {
         if num_errors == 1 {
-            println!("There was {} error!", num_errors);
+            eprintln!("There was {} error!", num_errors);
         } else {
-            println!("There were {} errors!", num_errors);
+            eprintln!("There were {} errors!", num_errors);
         }
 
-        println!("{}", message);
+        eprintln!("{}", message);
 
         // Don't expect this to happen but explain if it does.
         if num_unshown > 0 {
-            println!("{} errors weren't shown", num_unshown);
+            eprintln!("{} errors weren't shown", num_unshown);
+        }
+        return;
+    }
+
+    let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    println!("Tune: {:#?}", ast);
+}
+
+
+/// Check an ABC file, from STDIN to STDOUT.
+fn main_typeset() {
+    let chars = get_stdin().chars().collect::<Vec<char>>();
+    let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
+
+    if num_errors > 0 {
+        if num_errors == 1 {
+            eprintln!("There was {} error!", num_errors);
+        } else {
+            eprintln!("There were {} errors!", num_errors);
+        }
+
+        eprintln!("{}", message);
+
+        // Don't expect this to happen but explain if it does.
+        if num_unshown > 0 {
+            eprintln!("{} errors weren't shown", num_unshown);
         }
         return;
     }
 
     let ast = tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars));
-    println!("Tune: {:#?}", ast);
+
+    let typeset = typeset::typeset_from_ast(ast);
+
+    println!("{}", typeset);
 }
+
+
 
 fn main_unrecognised() {
     println!(
         "Unrecognised command. Try:
- - check"
+ - check
+ - typeset"
     );
 }
 
@@ -65,6 +100,7 @@ fn main() {
         Some(first) => {
             match first.as_ref() {
                 "check" => main_check(),
+                "typeset" => main_typeset(),
                 _ => main_unrecognised(),
             }
         }
