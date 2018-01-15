@@ -83,13 +83,42 @@ fn main_typeset() {
     println!("{}", typeset);
 }
 
+/// Visualise an ABC file. Whatever that means.
+fn main_viz() {
+    let chars = get_stdin().chars().collect::<Vec<char>>();
+    let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
+
+    if num_errors > 0 {
+        if num_errors == 1 {
+            eprintln!("There was {} error!", num_errors);
+        } else {
+            eprintln!("There were {} errors!", num_errors);
+        }
+
+        eprintln!("{}", message);
+
+        // Don't expect this to happen but explain if it does.
+        if num_unshown > 0 {
+            eprintln!("{} errors weren't shown", num_unshown);
+        }
+        return;
+    }
+
+    let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
+
+    let viz = viz::viz_from_ast(ast);
+
+    println!("{}", viz);
+}
+
 
 
 fn main_unrecognised() {
     println!(
         "Unrecognised command. Try:
  - check
- - typeset"
+ - typeset
+ - viz"
     );
 }
 
@@ -101,6 +130,7 @@ fn main() {
             match first.as_ref() {
                 "check" => main_check(),
                 "typeset" => main_typeset(),
+                "viz" => main_viz(),
                 _ => main_unrecognised(),
             }
         }

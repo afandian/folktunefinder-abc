@@ -54,6 +54,7 @@ pub struct Barline {
     pub repeat_before: bool,
     pub single: bool,
     pub repeat_after: bool,
+    pub n_time: Option<u32>,
 }
 
 /// A duration as a fraction of the default duration.

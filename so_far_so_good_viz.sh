@@ -3,5 +3,5 @@ set -e
 
 
 RUSTFLAGS="$RUSTFLAGS -Awarnings" cargo build
-cat test_resources/so-far-good.abc | RUST_BACKTRACE=1 target/debug/abctool check
+cat test_resources/so-far-good.abc | RUST_BACKTRACE=1 target/debug/abctool viz > /tmp/viz.svg
 

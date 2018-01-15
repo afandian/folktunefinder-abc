@@ -91,6 +91,7 @@ impl<'a> Context<'a> {
     }
 
     /// Take the first n characters, if we have them.
+    #[test]
     fn take(&self, n: usize) -> Option<(Context<'a>, &'a [char])> {
         if !self.has(n) {
             None
@@ -135,7 +136,17 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// Skip an optional prefix, returning true or false for whether or not it matched.
+    fn skip_optional_prefix(&self, prefix: &'a [char]) -> Context<'a> {
+        if let (ctx, true) = self.starts_with_insensitive_eager(prefix) {
+            ctx
+        } else {
+            *self
+        }
+    }
+
     /// The content from the offset onwards.
+    #[test]
     fn rest(&self) -> &'a [char] {
         &self.c[self.i..]
     }
@@ -268,7 +279,7 @@ fn lex_note_length<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     match read_until(ctx, delimiter) {
         Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::Metre)),
 
-        Ok((whole_line_ctx, content)) => {
+        Ok((whole_line_ctx, _)) => {
             match read_number(ctx, NumberRole::UpperDefaultNoteLength) {
                 Err((_, offset, err)) => LexResult::Error(whole_line_ctx, offset, err),
                 Ok((ctx, numerator)) => {
@@ -548,12 +559,12 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 
         // Although this context is discareded for parsing, it is used to return errors,
         // as it enables the lexer to continue at the next token.
-        Ok((whole_line_ctx, content)) => {
+        Ok((whole_line_ctx, _)) => {
             if let Some((ctx, key_note)) = read_key_note(ctx) {
 
                 // TODO: Assuming empty means 'major'. Is this correct for at the lexer?
                 // Or maybe the AST-level representation should handle the behaviour.
-                let (ctx, mode) = read_mode(ctx).unwrap_or((ctx, music::Mode::Major));
+                let (_, mode) = read_mode(ctx).unwrap_or((ctx, music::Mode::Major));
 
                 // TODO extras like specific accidentals?
 
@@ -568,9 +579,23 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     }
 }
 
+
+/// Read an n-time-repeat, e.g. "[2" or "2" immediately following a barline.
+fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
+
+    let ctx = ctx.skip_optional_prefix(&['[']);
+
+
+    match read_number(ctx, NumberRole::NTimeBar) {
+        Ok((ctx, number)) => (ctx, Some(number)),
+        _ => (ctx, None),
+    }
+}
+
 /// Lex a barline, when it is expected.
 /// TODO all tests for this!
 fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
+
     if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
         LexResult::T(
             ctx,
@@ -578,6 +603,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
                 repeat_before: true,
                 single: true,
                 repeat_after: true,
+                n_time: None,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
@@ -587,15 +613,20 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
                 repeat_before: true,
                 single: false,
                 repeat_after: true,
+                n_time: None,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|']) {
+
+        let (ctx, n_time) = read_n_time(ctx);
+
         LexResult::T(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
                 single: true,
                 repeat_after: false,
+                n_time: n_time,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
@@ -605,6 +636,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
                 repeat_before: false,
                 single: true,
                 repeat_after: true,
+                n_time: None,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
@@ -614,25 +646,42 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
                 repeat_before: false,
                 single: true,
                 repeat_after: true,
+                n_time: None,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
+        let (ctx, n_time) = read_n_time(ctx);
+
         LexResult::T(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
                 single: false,
                 repeat_after: false,
+                n_time: n_time,
             }),
         )
 
-    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|']) {
+        let (ctx, n_time) = read_n_time(ctx);
         LexResult::T(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
-                single: true,
+                single: false,
                 repeat_after: false,
+                n_time: n_time,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ']']) {
+        let (ctx, n_time) = read_n_time(ctx);
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: false,
+                repeat_after: false,
+                n_time: n_time,
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
@@ -642,6 +691,38 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
                 repeat_before: false,
                 single: false,
                 repeat_after: false,
+                n_time: None,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: true,
+                repeat_after: true,
+                n_time: None,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: true,
+                single: false,
+                repeat_after: true,
+                n_time: None,
+            }),
+        )
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
+        let (ctx, n_time) = read_n_time(ctx);
+        LexResult::T(
+            ctx,
+            T::Barline(music::Barline {
+                repeat_before: false,
+                single: true,
+                repeat_after: false,
+                n_time: n_time,
             }),
         )
     } else {
@@ -736,6 +817,7 @@ pub enum NumberRole {
     NoteDurationDenomenator,
     UpperDefaultNoteLength,
     LowerDefaultNoteLength,
+    NTimeBar,
 }
 
 /// Types of errors. These should be as specific as possible to give the best help.
@@ -908,6 +990,14 @@ impl LexError {
                                 .to_string(),
                         )
                     }
+                    &NumberRole::NTimeBar => {
+                        indent_and_append_line(
+                            indent,
+                            buf,
+                            &"I expected to find a n-time repeat bar.".to_string(),
+                        )
+                    }
+
                 }
             }
             &LexError::ExpectedSlashInMetre => {
@@ -2219,6 +2309,176 @@ K:    GFmaj
     }
 
     #[test]
+    fn read_n_time_test() {
+        let input = &(string_to_vec("[1".to_string()));
+        let ctx = Context::new(input);
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => assert_eq!(n_time, 1),
+            x => assert!(false, "Expected ntime got: {:?}", x),
+        }
+
+        // Bracket is optional.
+        let input = &(string_to_vec("2".to_string()));
+        let ctx = Context::new(input);
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => assert_eq!(n_time, 2),
+            x => assert!(false, "Expected ntime got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn lex_barline_test() {
+        let input = &(string_to_vec("|".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: false,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec("|:".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: false,
+                                        single: true,
+                                        repeat_after: true,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec(":|".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: true,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec(":|:".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: true,
+                                        single: true,
+                                        repeat_after: true,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec("::".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: true,
+                                        single: true,
+                                        repeat_after: true,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec("||".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: false,
+                                        single: false,
+                                        repeat_after: false,
+                                        n_time: None,
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+    }
+
+
+    ///
+    /// N-time repeat bars
+    ///
+    #[test]
+    fn lex_barline_n_time_test() {
+        let input = &(string_to_vec("|[1".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: false,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: Some(1),
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        // Bracket is optional.
+        let input = &(string_to_vec("|1".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: false,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: Some(1),
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec(":|[2".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: true,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: Some(2),
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec(":|2".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
+            LexResult::T(_,
+                         T::Barline(music::Barline {
+                                        repeat_before: true,
+                                        single: true,
+                                        repeat_after: false,
+                                        n_time: Some(2),
+                                    })) => assert!(true),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+    }
+
+    #[test]
     fn starts_with_insensitive_eager_test() {
         let input = &(string_to_vec("".to_string()));
         let ctx = Context::new(input);
@@ -2283,4 +2543,37 @@ K:    GFmaj
             _ => assert!(false, "Expected false"),
         }
     }
+
+    #[test]
+
+    fn skip_optional_prefix_test() {
+        let input = &(string_to_vec("".to_string()));
+        let ctx = Context::new(input);
+        assert_eq!(
+            ctx.skip_optional_prefix(&[]).i,
+            0,
+            "Offset is not incremented for empty prefix of empty"
+        );
+        let ctx = Context::new(input);
+        assert_eq!(
+            ctx.skip_optional_prefix(&['X']).i,
+            0,
+            "Offset is not incremented for some optional prefix of empty"
+        );
+
+        let input = &(string_to_vec("hello".to_string()));
+        let ctx = Context::new(input);
+        assert_eq!(
+            ctx.skip_optional_prefix(&[]).i,
+            0,
+            "Offset is not incremented for empty prefix of some"
+        );
+        let ctx = Context::new(input);
+        assert_eq!(
+            ctx.skip_optional_prefix(&['h', 'e']).i,
+            2,
+            "Offset is incremented for some prefix of some."
+        );
+    }
+
 }

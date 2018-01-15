@@ -13,62 +13,50 @@ use music;
 #[derive(Debug)]
 pub struct Tune<'a> {
     /// All the entities that fall outside of the tune structure, i.e. occur in the tune header.
-    prelude: Vec<SequentialEntity>,
+    pub prelude: Vec<SequentialEntity>,
 
     /// The RepeatStructure stores the sequential entities.
-    structures: Vec<RepeatStructure>,
+    pub sections: Vec<Section>,
 
     /// All non-sequential entities live in an a parallel structure.
-    non_sequential_entities: Vec<NonSequentialEntity<'a>>,
+    pub non_sequential_entities: Vec<NonSequentialEntity<'a>>,
 }
 
 impl<'a> Tune<'a> {
     pub fn new() -> Tune<'a> {
         Tune {
             prelude: vec![],
-            structures: vec![],
+            sections: vec![],
             non_sequential_entities: vec![],
         }
     }
 }
 
 #[derive(Debug)]
-struct Bar {
+pub struct Bar {
     /// A Bar has a number of parts (voices), each having a sequence of entities.
-    parts: Vec<Vec<SequentialEntity>>,
+    sequences: Vec<Vec<SequentialEntity>>,
+}
+
+impl Bar {
+    pub fn new() -> Bar {
+        Bar { sequences: vec![] }
+    }
 }
 
 #[derive(Debug)]
-struct Section {
-    opening_repeat: bool,
-    /// A Section is made up of a sequence of bars.
-    bars: Vec<Bar>,
-    closing_repeat: bool,
+pub struct Section {
+    pub repeat: bool,
+
+    pub main: Vec<Bar>,
+    pub n_time_bars: Vec<Vec<Bar>>,
 }
 
 impl Section {
     pub fn new() -> Section {
         Section {
-            bars: vec![],
-            opening_repeat: false,
-            closing_repeat: false,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct RepeatStructure {
-    /// Every tune is made of sections, even if only one.
-    main_section: Section,
-
-    /// Optional number of repeat bars.
-    n_time_bars: Vec<Section>,
-}
-
-impl RepeatStructure {
-    fn new() -> RepeatStructure {
-        RepeatStructure {
-            main_section: Section::new(),
+            repeat: false,
+            main: vec![],
             n_time_bars: vec![],
         }
     }
@@ -77,7 +65,7 @@ impl RepeatStructure {
 /// A SequentialEntity is something for which sequence is important.
 /// This includes changes in metadata, which can happen out of alignment with the bar structure.
 #[derive(Debug)]
-enum SequentialEntity {
+pub enum SequentialEntity {
     Note(music::Note),
 
     // Metadata
@@ -104,29 +92,36 @@ enum SequentialEntity {
 }
 
 #[derive(Debug)]
-enum NonSequentialEntity<'a> {
+pub enum NonSequentialEntity<'a> {
     /// A phrase mark spans from one sequential entity to another.
     PhraseMark(&'a SequentialEntity, &'a SequentialEntity),
 }
 
+#[derive(Debug)]
+pub enum SectionMode {
+    Main,
+    NTimeBar(u32),
+}
 
 
 /// Read from a Lexer and build a new AST.
 pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
-    let mut result = Tune::new();
+    let mut tune = Tune::new();
 
-    // Prelude contains the entities that make up the header.
-    let mut prelude_concluded = false;
+    let mut finished_prelude = false;
 
-    // The current sequence. Initially this is the prelude, but during a tune body this is a
-    // buffer for the current bar's contents.
-    let mut sequence: Vec<SequentialEntity> = vec![];
 
-    // The current section.
+
+    let mut bar = Bar::new();
+    let mut sequence = vec![];
+    // let mut bars: Vec<Bar> = vec![];
+
     let mut section = Section::new();
 
-    // The current structure
-    let mut repeat_structure = RepeatStructure::new();
+
+
+
+    let mut section_mode = SectionMode::Main;
 
     // The base note length. This can change during the tune.
     let mut note_length = music::FractionalDuration(1, 4);
@@ -134,7 +129,7 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
     for token in lexer {
         match token {
 
-            l::LexResult::Error(_, offset, error) => (),
+            l::LexResult::Error(_, _, _) => (),
 
             // If there's a token we don't care about the context.
             l::LexResult::T(_, token) => {
@@ -164,47 +159,65 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
                     l::T::KeySignature(pitch_class, mode) => {
                         sequence.push(SequentialEntity::KeySignature(pitch_class, mode));
 
-                        // First time we hit a key signature, that signals that it's time to close
-                        // the prelude and start a tune section.
-                        if !prelude_concluded {
-                            result.prelude = sequence;
+                        // K marks the end of the prelude.
+                        if !finished_prelude {
+                            tune.prelude = sequence;
+                            finished_prelude = true;
                             sequence = vec![];
-                            prelude_concluded = true;
                         }
-
                     }
                     l::T::DefaultNoteLength(new_note_length) => note_length = new_note_length,
                     l::T::Barline(barline) => {
 
+                        // End of a bar, flush the sequence, if there is one.
                         if sequence.len() > 0 {
-                            // A bar is made up of one or more sequences. If we've hit a barline,
-                            // we've got to the last sequence of the bar.
-                            let bar = Bar { parts: vec![sequence] };
-                            section.bars.push(bar);
+                            bar.sequences.push(sequence);
+                            sequence = vec![];
                         }
 
-                        // And start a new sequence buffer.
-                        sequence = vec![];
 
-                        // If there's a repeat mark, this signals the end of a section.
-                        // If not, continue with the section.
-                        // TODO l::T::Barline should also represent n-time bars.
-                        if barline.repeat_before || barline.repeat_after {
-                            if barline.repeat_before {
-                                section.closing_repeat = true;
-                                repeat_structure.main_section = section;
-
-                                section = Section::new();
-
-                                result.structures.push(repeat_structure);
-
-                                repeat_structure = RepeatStructure::new();
+                        // Where should we put this bar?
+                        match section_mode {
+                            SectionMode::Main => {
+                                section.main.push(bar);
                             }
+                            SectionMode::NTimeBar(_) => {
+                                // TODO DISCARDING N!
+                                // There will always be a last due to the section_mode change below.
+                                section.n_time_bars.last_mut().unwrap().push(bar);
+                            }
+                        }
+                        bar = Bar::new();
 
+                        // This signals the start of an n-time bar.
+                        if let Some(n_time) = barline.n_time {
+                            section_mode = SectionMode::NTimeBar(n_time);
+                            section.n_time_bars.push(vec![]);
+                        } else {
+                            // Is this starting a new repeated section?
+                            // Don't need to record the repeat mark, it's implicit in the structure.
+                            // Also it's often optional anyway.
                             if barline.repeat_after {
-                                section.opening_repeat = true;
+                                section_mode = SectionMode::Main;
+                            }
+
+                            // Is this closing a repeated section?
+                            if barline.repeat_before {
+                                section.repeat = true;
+                                tune.sections.push(section);
+                                section = Section::new();
+                                section_mode = SectionMode::Main;
+                            }
+
+                            if !barline.single {
+                                tune.sections.push(section);
+                                section = Section::new();
+                                section_mode = SectionMode::Main;
                             }
                         }
+
+
+
                     }
                     l::T::Note(note) => {
                         sequence.push(SequentialEntity::Note(note.resolve_duration(note_length)))
@@ -212,9 +225,8 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
                     l::T::BeamBreak => (),
                 }
             }
-
         }
     }
 
-    result
+    tune
 }
