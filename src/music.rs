@@ -1,3 +1,4 @@
+const NOTES_IN_SCALE: i16 = 7;
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum DiatonicPitchClass {
@@ -10,6 +11,20 @@ pub enum DiatonicPitchClass {
     G,
 }
 
+impl DiatonicPitchClass {
+    pub fn to_degree(&self) -> i16 {
+        match self {
+            &DiatonicPitchClass::C => 0,
+            &DiatonicPitchClass::D => 1,
+            &DiatonicPitchClass::E => 2,
+            &DiatonicPitchClass::F => 3,
+            &DiatonicPitchClass::G => 4,
+            &DiatonicPitchClass::A => 5,
+            &DiatonicPitchClass::B => 6,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum Accidental {
     Sharp,
@@ -17,6 +32,18 @@ pub enum Accidental {
     Natural,
     DoubleSharp,
     DoubleFlat,
+}
+
+impl Accidental {
+    pub fn semitones(&self) -> i16 {
+        match self {
+            &Accidental::Sharp => 1,
+            &Accidental::Flat => -1,
+            &Accidental::Natural => 0,
+            &Accidental::DoubleSharp => 2,
+            &Accidental::DoubleFlat => -2,
+        }
+    }
 }
 
 /// Musical Mode
@@ -37,16 +64,92 @@ pub enum Mode {
     Minor,
 }
 
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub enum ClefShape {
+    Treble,
+}
+
+impl ClefShape {
+    /// What pitch does this shape represent?
+    pub fn pitch(&self) -> PitchClass {
+        match self {
+            Treble => PitchClass {
+                diatonic_pitch_class: DiatonicPitchClass::G,
+                accidental: None,
+            },
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub struct PitchClass(pub DiatonicPitchClass, pub Option<Accidental>);
+pub struct Clef {
+    shape: ClefShape,
+    // Position on stave relative to middle line.
+    centre: i16,
+    pitch: PitchClass,
+}
+
+impl Clef {
+    /// Construct a treble clef.
+    pub fn treble() -> Clef {
+        Clef {
+            shape: ClefShape::Treble,
+            centre: 3,
+            pitch: PitchClass {
+                diatonic_pitch_class: DiatonicPitchClass::G,
+                accidental: None,
+            },
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub struct Pitch(
-    pub PitchClass,
+pub struct PitchClass {
+    pub diatonic_pitch_class: DiatonicPitchClass,
+    pub accidental: Option<Accidental>,
+}
+
+
+/// Interval as number of tones and an accidental.
+/// Note that "unison" is expressed as "1" but here as 0.
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub struct Interval {
+    /// Interval
+    pitch_classes: i16,
+    /// Accidental
+    accidental_semitones: i16,
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub struct Pitch {
+    pub pitch_class: PitchClass,
     /// Octave
-    pub i16
-);
+    pub octave: i16,
+}
+
+impl Pitch {
+    // How many diatonic degrees between this note and another.
+    // Note that if this occurs in a key signature, the key signature must be applied first!
+    pub fn interval_to(&self, other: Pitch) -> Interval {
+        let degrees = (other.pitch_class.diatonic_pitch_class.to_degree() +
+                           NOTES_IN_SCALE * other.octave) -
+            (self.pitch_class.diatonic_pitch_class.to_degree() + NOTES_IN_SCALE * self.octave);
+
+        let accidental = match other.pitch_class.accidental {
+            None => 0,
+            Some(ref accidental) => accidental.semitones(),
+        } -
+            match self.pitch_class.accidental {
+                None => 0,
+                Some(ref accidental) => accidental.semitones(),
+            };
+
+        Interval {
+            pitch_classes: degrees,
+            accidental_semitones: accidental,
+        }
+    }
+}
 
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -118,4 +221,94 @@ mod tests {
             "Multiply is commutative."
         );
     }
+
+    #[test]
+    fn pitch_minus_as_degrees_test() {
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
+            }.interval_to(Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
+            }),
+            Interval {
+                pitch_classes: 0,
+                accidental_semitones: 0,
+            },
+            "Note should have zero distance to itself"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
+            }.interval_to(Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 1,
+            }),
+            Interval {
+                pitch_classes: 7,
+                accidental_semitones: 0,
+            },
+            "Note should have 7 distance to itself in the next octave"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
+            }.interval_to(Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: -1,
+            }),
+            Interval {
+                pitch_classes: -7,
+                accidental_semitones: 0,
+            },
+            "Note should have -7 distance to itself in the previous octave"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
+            }.interval_to(Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::A,
+                    accidental: Some(Accidental::Sharp),
+                },
+                octave: 0,
+            }),
+            Interval {
+                pitch_classes: 1,
+                accidental_semitones: 1,
+            },
+            "Augmented first."
+        );
+
+
+    }
+
 }

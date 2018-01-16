@@ -434,7 +434,13 @@ fn read_key_note<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::PitchClass
     };
 
     match diatonic {
-        Some(diatonic) => Some((ctx, music::PitchClass(diatonic, accidental))),
+        Some(diatonic) => Some((
+            ctx,
+            music::PitchClass {
+                diatonic_pitch_class: diatonic,
+                accidental: accidental,
+            },
+        )),
         _ => None,
     }
 }
@@ -782,10 +788,13 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
         LexResult::T(
             ctx,
             T::Note(music::Note(
-                music::Pitch(
-                    music::PitchClass(diatonic, accidental),
-                    octave,
-                ),
+                music::Pitch {
+                    pitch_class: music::PitchClass {
+                        diatonic_pitch_class: diatonic,
+                        accidental: accidental,
+                    },
+                    octave: octave,
+                },
                 duration,
             )),
         )
@@ -1770,7 +1779,10 @@ K:    GFmaj
                 T::Metre(5, 8),
                 T::DefaultNoteLength(music::FractionalDuration(1, 8)),
                 T::KeySignature(
-                    music::PitchClass(music::DiatonicPitchClass::G, Some(music::Accidental::Flat)),
+                    music::PitchClass {
+                        diatonic_pitch_class: music::DiatonicPitchClass::G,
+                        accidental: Some(music::Accidental::Flat),
+                    },
                     music::Mode::Major
                 ),
             ]
@@ -2179,16 +2191,22 @@ K:    GFmaj
         let input = &(string_to_vec("C".to_string()));
         let context = Context::new(input);
         match read_key_note(context) {
-            Some((_, music::PitchClass(music::DiatonicPitchClass::C, None))) => {
-                assert!(true, "Read diatonic key note only, followed by EOF")
-            }
+            Some((_,
+                  music::PitchClass {
+                      diatonic_pitch_class: music::DiatonicPitchClass::C,
+                      accidental: None,
+                  })) => assert!(true, "Read diatonic key note only, followed by EOF"),
             x => assert!(false, "Expected diatonic pitch class: {:?}", x),
         }
 
         let input = &(string_to_vec("C\n".to_string()));
         let ctx = Context::new(input);
         match read_key_note(ctx) {
-            Some((new_ctx, music::PitchClass(music::DiatonicPitchClass::C, None))) => {
+            Some((new_ctx,
+                  music::PitchClass {
+                      diatonic_pitch_class: music::DiatonicPitchClass::C,
+                      accidental: None,
+                  })) => {
                 assert_eq!(
                     new_ctx,
                     ctx.skip(1),
@@ -2202,8 +2220,10 @@ K:    GFmaj
         let ctx = Context::new(input);
         match read_key_note(ctx) {
             Some((new_ctx,
-                  music::PitchClass(music::DiatonicPitchClass::F,
-                                    Some(music::Accidental::Sharp)))) => {
+                  music::PitchClass {
+                      diatonic_pitch_class: music::DiatonicPitchClass::F,
+                      accidental: Some(music::Accidental::Sharp),
+                  })) => {
                 assert_eq!(
                     new_ctx,
                     ctx.skip(2),
@@ -2217,8 +2237,10 @@ K:    GFmaj
         let ctx = Context::new(input);
         match read_key_note(ctx) {
             Some((new_ctx,
-                  music::PitchClass(music::DiatonicPitchClass::G,
-                                    Some(music::Accidental::Flat)))) => {
+                  music::PitchClass {
+                      diatonic_pitch_class: music::DiatonicPitchClass::G,
+                      accidental: Some(music::Accidental::Flat),
+                  })) => {
                 assert_eq!(
                     new_ctx,
                     ctx.skip(2),
