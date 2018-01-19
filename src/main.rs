@@ -104,11 +104,11 @@ fn main_viz() {
         return;
     }
 
-    let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    // let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
 
-    let viz = viz::viz_from_ast(ast);
+    // let viz = viz::viz_from_ast(ast);
 
-    println!("{}", viz);
+    // println!("{}", viz);
 }
 
 

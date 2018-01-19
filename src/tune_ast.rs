@@ -85,90 +85,79 @@ pub fn read_from_lexer(lexer: l::Lexer) -> TuneAst {
     // There's always a beam group in play.
     let mut start_of_beam_group: Option<usize> = None;
 
-    for token in lexer {
+    for token in lexer.collect_tokens() {
         match token {
-            // On error extract the index from the context. That's the only bit we need.
-            // Keeping the context confers the lifetime of the underlying ABC char slice on the AST.
-            // Coupling the AST to its source isn't desirable. The index is all we need to store.
-            // Using it with the input to print errors can exist in a parent context.
-            l::LexResult::Error(_, offset, error) => errors.push((offset, error)),
+            // TODO depending on tune section this may mean start a new line of music.
+            l::T::Newline => (),
+            l::T::Area(value) => headers.push(HeaderField::Area(value)),
+            l::T::Book(value) => headers.push(HeaderField::Book(value)),
+            l::T::Composer(value) => headers.push(HeaderField::Composer(value)),
+            l::T::Discography(value) => headers.push(HeaderField::Discography(value)),
+            l::T::Filename(value) => headers.push(HeaderField::Filename(value)),
+            l::T::Group(value) => headers.push(HeaderField::Group(value)),
+            l::T::History(value) => headers.push(HeaderField::History(value)),
+            l::T::Information(value) => headers.push(HeaderField::Information(value)),
+            l::T::Notes(value) => headers.push(HeaderField::Notes(value)),
+            l::T::Origin(value) => headers.push(HeaderField::Origin(value)),
+            l::T::Source(value) => headers.push(HeaderField::Source(value)),
+            l::T::Title(value) => headers.push(HeaderField::Title(value)),
+            l::T::Words(value) => headers.push(HeaderField::Words(value)),
+            l::T::X(value) => headers.push(HeaderField::X(value)),
+            l::T::Transcription(value) => headers.push(HeaderField::Transcription(value)),
+            l::T::Metre(numerator, denomenator) => {
+                headers.push(HeaderField::Metre(numerator, denomenator))
+            }
+            l::T::KeySignature(pitch_class, mode) => {
+                headers.push(HeaderField::KeySignature(pitch_class, mode))
+            }
 
-            // If there's a token we don't care about the context.
-            l::LexResult::T(_, token) => {
-                match token {
+            // This isn't stored as a header, it's kept as a running value for interpreting
+            // durations.
+            l::T::DefaultNoteLength(new_default_note_length) => {
+                default_note_length = new_default_note_length;
+            }
 
-                    l::T::Terminal => (),
-                    // TODO depending on tune section this may mean start a new line of music.
-                    l::T::Newline => (),
-                    l::T::Area(value) => headers.push(HeaderField::Area(value)),
-                    l::T::Book(value) => headers.push(HeaderField::Book(value)),
-                    l::T::Composer(value) => headers.push(HeaderField::Composer(value)),
-                    l::T::Discography(value) => headers.push(HeaderField::Discography(value)),
-                    l::T::Filename(value) => headers.push(HeaderField::Filename(value)),
-                    l::T::Group(value) => headers.push(HeaderField::Group(value)),
-                    l::T::History(value) => headers.push(HeaderField::History(value)),
-                    l::T::Information(value) => headers.push(HeaderField::Information(value)),
-                    l::T::Notes(value) => headers.push(HeaderField::Notes(value)),
-                    l::T::Origin(value) => headers.push(HeaderField::Origin(value)),
-                    l::T::Source(value) => headers.push(HeaderField::Source(value)),
-                    l::T::Title(value) => headers.push(HeaderField::Title(value)),
-                    l::T::Words(value) => headers.push(HeaderField::Words(value)),
-                    l::T::X(value) => headers.push(HeaderField::X(value)),
-                    l::T::Transcription(value) => headers.push(HeaderField::Transcription(value)),
-                    l::T::Metre(numerator, denomenator) => {
-                        headers.push(HeaderField::Metre(numerator, denomenator))
-                    }
-                    l::T::KeySignature(pitch_class, mode) => {
-                        headers.push(HeaderField::KeySignature(pitch_class, mode))
-                    }
+            l::T::Barline(barline) => {
 
-                    // This isn't stored as a header, it's kept as a running value for interpreting
-                    // durations.
-                    l::T::DefaultNoteLength(new_default_note_length) => {
-                        default_note_length = new_default_note_length;
-                    }
+                // If we're in a beam group, close it.
+                if let Some(start_i) = start_of_beam_group {
 
-                    l::T::Barline(barline) => {
-
-                        // If we're in a beam group, close it.
-                        if let Some(start_i) = start_of_beam_group {
-
-                            let beam_length = entities.len() - start_i;
-                            if beam_length > 1 {
-                                entities.push(Entity::CloseBeam);
-                                entities.insert(start_i, Entity::OpenBeam);
-                            }
-                        }
-
-                        start_of_beam_group = None;
-                        entities.push(Entity::Barline(barline));
-                    }
-                    l::T::Note(note) => {
-                        // If we're not in a beam group then start one, as it's the first note
-                        // we've seen since the last one.
-                        match start_of_beam_group {
-                            None => start_of_beam_group = Some(entities.len()),
-                            _ => (),
-                        }
-
-                        let note = note.resolve_duration(default_note_length);
-
-                        entities.push(Entity::Note(note));
-                    }
-                    l::T::BeamBreak => {
-                        // If there's already an open beam group, wrap it up and close it.
-                        if let Some(start_i) = start_of_beam_group {
-                            let beam_length = entities.len() - start_i;
-                            if beam_length > 1 {
-                                entities.push(Entity::CloseBeam);
-                                entities.insert(start_i, Entity::OpenBeam);
-                            }
-                        }
-
-                        // Start a new one.
-                        start_of_beam_group = Some(entities.len());
+                    let beam_length = entities.len() - start_i;
+                    if beam_length > 1 {
+                        entities.push(Entity::CloseBeam);
+                        entities.insert(start_i, Entity::OpenBeam);
                     }
                 }
+
+                start_of_beam_group = None;
+                entities.push(Entity::Barline(barline));
+            }
+            l::T::Note(note) => {
+                // If we're not in a beam group then start one, as it's the first note
+                // we've seen since the last one.
+                match start_of_beam_group {
+                    None => start_of_beam_group = Some(entities.len()),
+                    _ => (),
+                }
+
+                let note = note.resolve_duration(default_note_length);
+
+                entities.push(Entity::Note(note));
+            }
+            l::T::BeamBreak => {
+                // If there's already an open beam group, wrap it up and close it.
+                if let Some(start_i) = start_of_beam_group {
+                    let beam_length = entities.len() - start_i;
+                    if beam_length > 1 {
+                        entities.push(Entity::CloseBeam);
+                        entities.insert(start_i, Entity::OpenBeam);
+                    }
+                }
+
+                // Start a new one.
+                start_of_beam_group = Some(entities.len());
+
+
             }
 
         }

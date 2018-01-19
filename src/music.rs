@@ -1,6 +1,6 @@
 const NOTES_IN_SCALE: i16 = 7;
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum DiatonicPitchClass {
     A,
     B,
@@ -25,7 +25,7 @@ impl DiatonicPitchClass {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Accidental {
     Sharp,
     Flat,
@@ -103,7 +103,7 @@ impl Clef {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct PitchClass {
     pub diatonic_pitch_class: DiatonicPitchClass,
     pub accidental: Option<Accidental>,
@@ -112,7 +112,7 @@ pub struct PitchClass {
 
 /// Interval as number of tones and an accidental.
 /// Note that "unison" is expressed as "1" but here as 0.
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Interval {
     /// Interval
     pitch_classes: i16,
@@ -120,7 +120,7 @@ pub struct Interval {
     accidental_semitones: i16,
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Pitch {
     pub pitch_class: PitchClass,
     /// Octave
@@ -186,7 +186,7 @@ pub struct Note(pub Pitch, pub FractionalDuration);
 
 impl Note {
     /// Adjust this note's duration by mutiplying by a base.
-    pub fn resolve_duration(self, base_duration: FractionalDuration) -> Note {
+    pub fn resolve_duration(&self, base_duration: FractionalDuration) -> Note {
         Note(self.0, self.1.multiply(base_duration))
     }
 }

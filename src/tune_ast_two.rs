@@ -126,106 +126,110 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
     // The base note length. This can change during the tune.
     let mut note_length = music::FractionalDuration(1, 4);
 
-    for token in lexer {
+    // TODO matching on a reference and then cloning is deeply unsatisfactory!
+    for token in lexer.collect_tokens().iter() {
         match token {
+            &l::T::Newline => (),
+            &l::T::Area(ref value) => sequence.push(SequentialEntity::Area(value.clone())),
+            &l::T::Book(ref value) => sequence.push(SequentialEntity::Book(value.clone())),
+            &l::T::Composer(ref value) => sequence.push(SequentialEntity::Composer(value.clone())),
+            &l::T::Discography(ref value) => {
+                sequence.push(SequentialEntity::Discography(value.clone()))
+            }
+            &l::T::Filename(ref value) => sequence.push(SequentialEntity::Filename(value.clone())),
+            &l::T::Group(ref value) => sequence.push(SequentialEntity::Group(value.clone())),
+            &l::T::History(ref value) => sequence.push(SequentialEntity::History(value.clone())),
+            &l::T::Information(ref value) => {
+                sequence.push(SequentialEntity::Information(value.clone()))
+            }
+            &l::T::Notes(ref value) => sequence.push(SequentialEntity::Notes(value.clone())),
+            &l::T::Origin(ref value) => sequence.push(SequentialEntity::Origin(value.clone())),
+            &l::T::Source(ref value) => sequence.push(SequentialEntity::Source(value.clone())),
+            &l::T::Title(ref value) => sequence.push(SequentialEntity::Title(value.clone())),
+            &l::T::Words(ref value) => sequence.push(SequentialEntity::Words(value.clone())),
+            &l::T::X(ref value) => sequence.push(SequentialEntity::X(value.clone())),
+            &l::T::Transcription(ref value) => {
+                sequence.push(SequentialEntity::Transcription(value.clone()))
+            }
+            &l::T::Metre(ref numerator, ref denomenator) => {
+                sequence.push(SequentialEntity::Metre(
+                    numerator.clone(),
+                    denomenator.clone(),
+                ))
+            }
+            &l::T::KeySignature(ref pitch_class, ref mode) => {
+                sequence.push(SequentialEntity::KeySignature(
+                    pitch_class.clone(),
+                    mode.clone(),
+                ));
 
-            l::LexResult::Error(_, _, _) => (),
-
-            // If there's a token we don't care about the context.
-            l::LexResult::T(_, token) => {
-                match token {
-                    l::T::Terminal => (),
-                    l::T::Newline => (),
-                    l::T::Area(value) => sequence.push(SequentialEntity::Area(value)),
-                    l::T::Book(value) => sequence.push(SequentialEntity::Book(value)),
-                    l::T::Composer(value) => sequence.push(SequentialEntity::Composer(value)),
-                    l::T::Discography(value) => sequence.push(SequentialEntity::Discography(value)),
-                    l::T::Filename(value) => sequence.push(SequentialEntity::Filename(value)),
-                    l::T::Group(value) => sequence.push(SequentialEntity::Group(value)),
-                    l::T::History(value) => sequence.push(SequentialEntity::History(value)),
-                    l::T::Information(value) => sequence.push(SequentialEntity::Information(value)),
-                    l::T::Notes(value) => sequence.push(SequentialEntity::Notes(value)),
-                    l::T::Origin(value) => sequence.push(SequentialEntity::Origin(value)),
-                    l::T::Source(value) => sequence.push(SequentialEntity::Source(value)),
-                    l::T::Title(value) => sequence.push(SequentialEntity::Title(value)),
-                    l::T::Words(value) => sequence.push(SequentialEntity::Words(value)),
-                    l::T::X(value) => sequence.push(SequentialEntity::X(value)),
-                    l::T::Transcription(value) => {
-                        sequence.push(SequentialEntity::Transcription(value))
-                    }
-                    l::T::Metre(numerator, denomenator) => {
-                        sequence.push(SequentialEntity::Metre(numerator, denomenator))
-                    }
-                    l::T::KeySignature(pitch_class, mode) => {
-                        sequence.push(SequentialEntity::KeySignature(pitch_class, mode));
-
-                        // K marks the end of the prelude.
-                        if !finished_prelude {
-                            tune.prelude = sequence;
-                            finished_prelude = true;
-                            sequence = vec![];
-                        }
-                    }
-                    l::T::DefaultNoteLength(new_note_length) => note_length = new_note_length,
-                    l::T::Barline(barline) => {
-
-                        // End of a bar, flush the sequence, if there is one.
-                        if sequence.len() > 0 {
-                            bar.sequences.push(sequence);
-                            sequence = vec![];
-                        }
-
-
-                        // Where should we put this bar?
-                        match section_mode {
-                            SectionMode::Main => {
-                                section.main.push(bar);
-                            }
-                            SectionMode::NTimeBar(_) => {
-                                // TODO DISCARDING N!
-                                // There will always be a last due to the section_mode change below.
-                                section.n_time_bars.last_mut().unwrap().push(bar);
-                            }
-                        }
-                        bar = Bar::new();
-
-                        // This signals the start of an n-time bar.
-                        if let Some(n_time) = barline.n_time {
-                            section_mode = SectionMode::NTimeBar(n_time);
-                            section.n_time_bars.push(vec![]);
-                        } else {
-                            // Is this starting a new repeated section?
-                            // Don't need to record the repeat mark, it's implicit in the structure.
-                            // Also it's often optional anyway.
-                            if barline.repeat_after {
-                                section_mode = SectionMode::Main;
-                            }
-
-                            // Is this closing a repeated section?
-                            if barline.repeat_before {
-                                section.repeat = true;
-                                tune.sections.push(section);
-                                section = Section::new();
-                                section_mode = SectionMode::Main;
-                            }
-
-                            if !barline.single {
-                                tune.sections.push(section);
-                                section = Section::new();
-                                section_mode = SectionMode::Main;
-                            }
-                        }
-
-
-
-                    }
-                    l::T::Note(note) => {
-                        sequence.push(SequentialEntity::Note(note.resolve_duration(note_length)))
-                    }
-                    l::T::BeamBreak => (),
+                // K marks the end of the prelude.
+                if !finished_prelude {
+                    tune.prelude = sequence;
+                    finished_prelude = true;
+                    sequence = vec![];
                 }
             }
+            &l::T::DefaultNoteLength(new_note_length) => note_length = new_note_length,
+            &l::T::Barline(ref barline) => {
+
+                // End of a bar, flush the sequence, if there is one.
+                if sequence.len() > 0 {
+                    bar.sequences.push(sequence);
+                    sequence = vec![];
+                }
+
+
+                // Where should we put this bar?
+                match section_mode {
+                    SectionMode::Main => {
+                        section.main.push(bar);
+                    }
+                    SectionMode::NTimeBar(_) => {
+                        // TODO DISCARDING N!
+                        // There will always be a last due to the section_mode change below.
+                        section.n_time_bars.last_mut().unwrap().push(bar);
+                    }
+                }
+                bar = Bar::new();
+
+                // This signals the start of an n-time bar.
+                if let Some(n_time) = barline.n_time {
+                    section_mode = SectionMode::NTimeBar(n_time);
+                    section.n_time_bars.push(vec![]);
+                } else {
+                    // Is this starting a new repeated section?
+                    // Don't need to record the repeat mark, it's implicit in the structure.
+                    // Also it's often optional anyway.
+                    if barline.repeat_after {
+                        section_mode = SectionMode::Main;
+                    }
+
+                    // Is this closing a repeated section?
+                    if barline.repeat_before {
+                        section.repeat = true;
+                        tune.sections.push(section);
+                        section = Section::new();
+                        section_mode = SectionMode::Main;
+                    }
+
+                    if !barline.single {
+                        tune.sections.push(section);
+                        section = Section::new();
+                        section_mode = SectionMode::Main;
+                    }
+                }
+
+
+
+            }
+            &l::T::Note(ref note) => {
+                sequence.push(SequentialEntity::Note(note.resolve_duration(note_length)))
+            }
+            &l::T::BeamBreak => (),
         }
+
+
     }
 
     tune

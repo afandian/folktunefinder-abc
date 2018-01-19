@@ -292,7 +292,7 @@ fn lex_note_length<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                                 }
                                 Ok((ctx, denomenator)) => {
                                     // Skip one character for the delimiter.
-                                    LexResult::T(
+                                    LexResult::t(
                                         ctx.skip(1),
                                         T::DefaultNoteLength(
                                             music::FractionalDuration(numerator, denomenator),
@@ -330,9 +330,9 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         Ok((whole_line_ctx, content)) => {
 
             if content == &['C'] {
-                LexResult::T(ctx, T::Metre(4, 4))
+                LexResult::t(ctx, T::Metre(4, 4))
             } else if content == &['C', '|'] {
-                LexResult::T(ctx, T::Metre(2, 4))
+                LexResult::t(ctx, T::Metre(2, 4))
             } else {
                 // It's a numerical metre.
                 match read_number(ctx, NumberRole::UpperTimeSignature) {
@@ -347,7 +347,7 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                                     }
                                     Ok((ctx, denomenator)) => {
                                         // Skip one character for the delimiter.
-                                        LexResult::T(ctx.skip(1), T::Metre(numerator, denomenator))
+                                        LexResult::t(ctx.skip(1), T::Metre(numerator, denomenator))
                                     }
                                 }
                             }
@@ -575,7 +575,7 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                 // TODO extras like specific accidentals?
 
                 // Skip to end of delimited sequence (line or bracket).
-                LexResult::T(whole_line_ctx, T::KeySignature(key_note, mode))
+                LexResult::t(whole_line_ctx, T::KeySignature(key_note, mode))
             } else {
                 // TODO: There may be an alternative to a key-note. May need to amend this when
                 // fuzzing with real-world inputs.
@@ -603,7 +603,7 @@ fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
 fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
     if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -613,7 +613,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -626,7 +626,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
         let (ctx, n_time) = read_n_time(ctx);
 
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -636,7 +636,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -646,7 +646,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -658,7 +658,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
         let (ctx, n_time) = read_n_time(ctx);
 
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -670,7 +670,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|']) {
         let (ctx, n_time) = read_n_time(ctx);
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -681,7 +681,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ']']) {
         let (ctx, n_time) = read_n_time(ctx);
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -691,7 +691,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -701,7 +701,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -711,7 +711,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             }),
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: true,
@@ -722,7 +722,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
         )
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
         let (ctx, n_time) = read_n_time(ctx);
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Barline(music::Barline {
                 repeat_before: false,
@@ -785,7 +785,7 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
     let (ctx, duration) = read_fractional_duration(ctx);
 
     if let Some(diatonic) = diatonic {
-        LexResult::T(
+        LexResult::t(
             ctx,
             T::Note(music::Note(
                 music::Pitch {
@@ -1089,18 +1089,33 @@ impl LexError {
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum LexResult<'a> {
     /// Token. Shortened as it's used a lot.
-    T(Context<'a>, T),
+    T(Context<'a>, Vec<T>),
     /// Error contains a context and an offset of where the error occurred.
     /// The context's offset is used to resume, and should point to the end of the troublesome bit.
     /// The error's offset indidates where the error happened, i.e. the start of the bother.
     Error(Context<'a>, usize, LexError),
+
+    /// End of the file was reached.
+    /// Not a token.
+    Terminal,
+}
+
+impl<'a> LexResult<'a> {
+    /// Build a lex result with a single Token.
+    fn t(ctx: Context<'a>, t: T) -> LexResult<'a> {
+        LexResult::T(ctx, vec![t])
+    }
+
+    /// Build a lex result with a number of Tokens.
+    fn ts(ctx: Context<'a>, ts: Vec<T>) -> LexResult<'a> {
+        LexResult::T(ctx, ts)
+    }
 }
 
 /// ABC Token.
 /// Shortened as it's used a lot.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum T {
-    Terminal,
     Newline,
     BeamBreak,
 
@@ -1135,7 +1150,7 @@ pub enum T {
 /// Note that there's a lot of aliasing of ctx in nested matches.
 fn read(ctx: Context) -> LexResult {
     match ctx.peek_first() {
-        None => LexResult::T(ctx, T::Terminal),
+        None => LexResult::Terminal,
         Some((ctx, first_char)) => {
             match ctx.tune_section {
                 TuneSection::Header => {
@@ -1160,21 +1175,21 @@ fn read(ctx: Context) -> LexResult {
                                             let value = value.trim().to_string();
 
                                             match first_char {
-                                                'A' => LexResult::T(ctx, T::Area(value)),
-                                                'B' => LexResult::T(ctx, T::Book(value)),
-                                                'C' => LexResult::T(ctx, T::Composer(value)),
-                                                'D' => LexResult::T(ctx, T::Discography(value)),
-                                                'F' => LexResult::T(ctx, T::Filename(value)),
-                                                'G' => LexResult::T(ctx, T::Group(value)),
-                                                'H' => LexResult::T(ctx, T::History(value)),
-                                                'I' => LexResult::T(ctx, T::Information(value)),
-                                                'N' => LexResult::T(ctx, T::Notes(value)),
-                                                'O' => LexResult::T(ctx, T::Origin(value)),
-                                                'S' => LexResult::T(ctx, T::Source(value)),
-                                                'T' => LexResult::T(ctx, T::Title(value)),
-                                                'W' => LexResult::T(ctx, T::Words(value)),
-                                                'X' => LexResult::T(ctx, T::X(value)),
-                                                'Z' => LexResult::T(ctx, T::Transcription(value)),
+                                                'A' => LexResult::t(ctx, T::Area(value)),
+                                                'B' => LexResult::t(ctx, T::Book(value)),
+                                                'C' => LexResult::t(ctx, T::Composer(value)),
+                                                'D' => LexResult::t(ctx, T::Discography(value)),
+                                                'F' => LexResult::t(ctx, T::Filename(value)),
+                                                'G' => LexResult::t(ctx, T::Group(value)),
+                                                'H' => LexResult::t(ctx, T::History(value)),
+                                                'I' => LexResult::t(ctx, T::Information(value)),
+                                                'N' => LexResult::t(ctx, T::Notes(value)),
+                                                'O' => LexResult::t(ctx, T::Origin(value)),
+                                                'S' => LexResult::t(ctx, T::Source(value)),
+                                                'T' => LexResult::t(ctx, T::Title(value)),
+                                                'W' => LexResult::t(ctx, T::Words(value)),
+                                                'X' => LexResult::t(ctx, T::X(value)),
+                                                'Z' => LexResult::t(ctx, T::Transcription(value)),
 
                                                 // This can only happen if the above cases get out
                                                 // of sync.
@@ -1291,8 +1306,8 @@ fn read(ctx: Context) -> LexResult {
 
                 TuneSection::Body => {
                     match first_char {
-                        ' ' => LexResult::T(ctx.skip(1), T::BeamBreak),
-                        '\n' => LexResult::T(ctx.skip(1), T::Newline),
+                        ' ' => LexResult::t(ctx.skip(1), T::BeamBreak),
+                        '\n' => LexResult::t(ctx.skip(1), T::Newline),
 
                         '|' | ':' => lex_barline(ctx),
 
@@ -1336,16 +1351,16 @@ impl<'a> Lexer<'a> {
     }
 
     /// Collect all tokens into vector, ignoring errors.
-    /// For testing. A real consumer should take account of errors!
-    #[cfg(test)]
-    fn collect_tokens(self) -> Vec<T> {
+    pub fn collect_tokens(self) -> Vec<T> {
         self.filter_map(|x| match x {
-            LexResult::T(_, token) => Some(token),
+            LexResult::T(_, tokens) => Some(tokens),
             LexResult::Error(_, _, _) => None,
-        }).collect::<Vec<T>>()
+            LexResult::Terminal => None,
+        }).flat_map(|x| x)
+            .collect::<Vec<T>>()
     }
 
-    fn collect_errors(self) -> Vec<(Context<'a>, usize, LexError)> {
+    pub fn collect_errors(self) -> Vec<(Context<'a>, usize, LexError)> {
         self.filter_map(|x| match x {
             LexResult::Error(ctx, offset, err) => Some((ctx, offset, err)),
             _ => None,
@@ -1383,10 +1398,7 @@ impl<'a> Iterator for Lexer<'a> {
 
         match result {
             // Stop iteration when we reach the terminal.
-            LexResult::T(context, T::Terminal) => {
-                self.context = context;
-                None
-            }
+            LexResult::Terminal => None,
 
             // If it's an error, return it and set the flag.
             LexResult::Error(context, offset, error) => {
@@ -1396,9 +1408,9 @@ impl<'a> Iterator for Lexer<'a> {
             }
 
             // Otherwise it's a token.
-            LexResult::T(context, token) => {
+            LexResult::T(context, tokens) => {
                 self.context = context.clone();
-                Some(LexResult::T(context, token))
+                Some(LexResult::T(context, tokens))
             }
         }
     }
@@ -1698,17 +1710,21 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
 
         // Check that we returned token, error, token.
         match all_results[0] {
-            LexResult::T(_, ref token) => assert_eq!(token, &T::Title("Title".to_string())),
+            LexResult::T(_, ref tokens) => assert_eq!(tokens, &[T::Title("Title".to_string())]),
             _ => assert!(false),
         }
 
         match all_results[1] {
-            LexResult::Error(_, _, LexError::ExpectedNumber(_)) => assert!(true),
+            LexResult::Error(_, _, LexError::ExpectedNumber(NumberRole::LowerTimeSignature)) => {
+                assert!(true)
+            }
             _ => assert!(false),
         }
 
         match all_results[2] {
-            LexResult::T(_, ref token) => assert_eq!(token, &T::Composer("Composer".to_string())),
+            LexResult::T(_, ref tokens) => {
+                assert_eq!(tokens, &[T::Composer("Composer".to_string())])
+            }
             _ => assert!(false),
         }
 
@@ -1879,7 +1895,7 @@ K:    GFmaj
     fn body_simple_entities() {
         // End of file in tune body.
         match read(Context::new(&(string_to_vec("".to_string()))).in_body()) {
-            LexResult::T(_, T::Terminal) => {
+            LexResult::Terminal => {
                 assert!(
                     true,
                     "Should lex terminal if end of string in body section."
@@ -2121,12 +2137,12 @@ K:    GFmaj
         // Shorthand.
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("C\n")))), '\n') {
-            LexResult::T(_, T::Metre(4, 4)) => assert!(true, "C should be parsed"),
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::Metre(4, 4)], "C should be parsed"),
             _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("C|\n")))), '\n') {
-            LexResult::T(_, T::Metre(2, 4)) => assert!(true, "C should be parsed"),
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::Metre(2, 4)], "C should be parsed"),
             _ => assert!(false),
         }
 
@@ -2134,12 +2150,24 @@ K:    GFmaj
         // Numerical
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("2/4\n")))), '\n') {
-            LexResult::T(_, T::Metre(2, 4)) => assert!(true, "2/4 time signature should be parsed"),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[T::Metre(2, 4)],
+                    "2/4 time signature should be parsed"
+                )
+            }
             _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("6/8\n")))), '\n') {
-            LexResult::T(_, T::Metre(6, 8)) => assert!(true, "6/8 time signature should be parsed"),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[T::Metre(6, 8)],
+                    "6/8 time signature should be parsed"
+                )
+            }
             _ => assert!(false),
         }
 
@@ -2147,8 +2175,12 @@ K:    GFmaj
             Context::new(&(string_to_vec(String::from("200/400\n")))),
             '\n',
         ) {
-            LexResult::T(_, T::Metre(200, 400)) => {
-                assert!(true, "Ridiculous but valid time signature should be parsed")
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[T::Metre(200, 400)],
+                    "Ridiculous but valid time signature should be parsed"
+                )
             }
             _ => assert!(false),
         }
@@ -2174,7 +2206,7 @@ K:    GFmaj
         let context = Context::new(empty);
 
         match read(context) {
-            LexResult::T(_, T::Terminal) => assert!(true, "Empty results in Terminal character"),
+            LexResult::Terminal => assert!(true, "Empty results in Terminal character"),
             _ => assert!(false, "Terminal should be returned"),
         }
     }
@@ -2353,13 +2385,19 @@ K:    GFmaj
         let input = &(string_to_vec("|".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: false,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: false,
+                            single: true,
+                            repeat_after: false,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2367,13 +2405,19 @@ K:    GFmaj
         let input = &(string_to_vec("|:".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: false,
-                                        single: true,
-                                        repeat_after: true,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: false,
+                            single: true,
+                            repeat_after: true,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2381,13 +2425,19 @@ K:    GFmaj
         let input = &(string_to_vec(":|".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: true,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: true,
+                            single: true,
+                            repeat_after: false,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2395,13 +2445,19 @@ K:    GFmaj
         let input = &(string_to_vec(":|:".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: true,
-                                        single: true,
-                                        repeat_after: true,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: true,
+                            single: true,
+                            repeat_after: true,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2409,13 +2465,19 @@ K:    GFmaj
         let input = &(string_to_vec("::".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: true,
-                                        single: true,
-                                        repeat_after: true,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: true,
+                            single: true,
+                            repeat_after: true,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2423,13 +2485,19 @@ K:    GFmaj
         let input = &(string_to_vec("||".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: false,
-                                        single: false,
-                                        repeat_after: false,
-                                        n_time: None,
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: false,
+                            single: false,
+                            repeat_after: false,
+                            n_time: None,
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2444,13 +2512,19 @@ K:    GFmaj
         let input = &(string_to_vec("|[1".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: false,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: Some(1),
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: false,
+                            single: true,
+                            repeat_after: false,
+                            n_time: Some(1),
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2459,13 +2533,19 @@ K:    GFmaj
         let input = &(string_to_vec("|1".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: false,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: Some(1),
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: false,
+                            single: true,
+                            repeat_after: false,
+                            n_time: Some(1),
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2473,13 +2553,19 @@ K:    GFmaj
         let input = &(string_to_vec(":|[2".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: true,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: Some(2),
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: true,
+                            single: true,
+                            repeat_after: false,
+                            n_time: Some(2),
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2487,13 +2573,19 @@ K:    GFmaj
         let input = &(string_to_vec(":|2".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_,
-                         T::Barline(music::Barline {
-                                        repeat_before: true,
-                                        single: true,
-                                        repeat_after: false,
-                                        n_time: Some(2),
-                                    })) => assert!(true),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Barline(music::Barline {
+                            repeat_before: true,
+                            single: true,
+                            repeat_after: false,
+                            n_time: Some(2),
+                        }),
+                    ]
+                )
+            }
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
