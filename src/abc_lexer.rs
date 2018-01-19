@@ -591,7 +591,6 @@ fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
 
     let ctx = ctx.skip_optional_prefix(&['[']);
 
-
     match read_number(ctx, NumberRole::NTimeBar) {
         Ok((ctx, number)) => (ctx, Some(number)),
         _ => (ctx, None),
@@ -603,134 +602,63 @@ fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
 fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
     if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: true,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: false,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|']) {
 
-        let (ctx, n_time) = read_n_time(ctx);
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => LexResult::tt(ctx, T::CloseRepeat, T::NTimeBar(n_time)),
+            (ctx, Nil) => LexResult::t(ctx, T::CloseRepeat),
+        }
 
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: true,
-                repeat_after: false,
-                n_time: n_time,
-            }),
-        )
+
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: true,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::tt(ctx, T::DoubleBar, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: true,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::t(ctx, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
         let (ctx, n_time) = read_n_time(ctx);
 
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: false,
-                repeat_after: false,
-                n_time: n_time,
-            }),
-        )
+        
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => LexResult::ttt(ctx, T::CloseRepeat, T::DoubleBar, T::NTimeBar(n_time)),
+            (ctx, Nil) => LexResult::tt(ctx, T::CloseRepeat, T::DoubleBar),
+        }
+
+        
 
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|']) {
         let (ctx, n_time) = read_n_time(ctx);
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: false,
-                repeat_after: false,
-                n_time: n_time,
-            }),
-        )
+
+        
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => LexResult::tt(ctx, T::DoubleBar, T::NTimeBar(n_time)),
+            (ctx, Nil) => LexResult::t(ctx, T::DoubleBar),
+        }
+
+        
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ']']) {
         let (ctx, n_time) = read_n_time(ctx);
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: false,
-                repeat_after: false,
-                n_time: n_time,
-            }),
-        )
+
+    
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => LexResult::tt(ctx, T::EndBar, T::NTimeBar(n_time)),
+            (ctx, Nil) => LexResult::t(ctx, T::EndBar),
+        }
+
+        
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: false,
-                repeat_after: false,
-                n_time: None,
-            }),
-        )
+        LexResult::t(ctx, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: true,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: true,
-                single: false,
-                repeat_after: true,
-                n_time: None,
-            }),
-        )
+        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
-        let (ctx, n_time) = read_n_time(ctx);
-        LexResult::t(
-            ctx,
-            T::Barline(music::Barline {
-                repeat_before: false,
-                single: true,
-                repeat_after: false,
-                n_time: n_time,
-            }),
-        )
+         match read_n_time(ctx) {
+            (ctx, Some(n_time)) => LexResult::tt(ctx, T::SingleBar, T::NTimeBar(n_time)),
+            (ctx, Nil) => LexResult::t(ctx, T::SingleBar),
+        }
     } else {
         LexResult::Error(ctx, ctx.i, LexError::UnrecognisedBarline)
     }
@@ -1106,6 +1034,21 @@ impl<'a> LexResult<'a> {
         LexResult::T(ctx, vec![t])
     }
 
+    /// Build a lex result with a two Tokens. Convenience.
+    fn tt(ctx: Context<'a>, a: T, b: T) -> LexResult<'a> {
+        LexResult::T(ctx, vec![a, b])
+    }
+
+    /// Build a lex result with a two Tokens. Convenience.
+    fn ttt(ctx: Context<'a>, a: T, b: T, c: T) -> LexResult<'a> {
+        LexResult::T(ctx, vec![a, b, c])
+    }
+
+    /// Build a lex result with a two Tokens. Convenience.
+    fn tttt(ctx: Context<'a>, a: T, b: T, c: T, d: T) -> LexResult<'a> {
+        LexResult::T(ctx, vec![a, b, c, d])
+    }
+
     /// Build a lex result with a number of Tokens.
     fn ts(ctx: Context<'a>, ts: Vec<T>) -> LexResult<'a> {
         LexResult::T(ctx, ts)
@@ -1141,7 +1084,12 @@ pub enum T {
     KeySignature(music::PitchClass, music::Mode),
     DefaultNoteLength(music::FractionalDuration),
 
-    Barline(music::Barline),
+    SingleBar,
+    DoubleBar,
+    OpenRepeat,
+    CloseRepeat,
+    EndBar,
+    NTimeBar(u32),
 
     Note(music::Note),
 }
@@ -2389,12 +2337,7 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: false,
-                            single: true,
-                            repeat_after: false,
-                            n_time: None,
-                        }),
+                        T::SingleBar
                     ]
                 )
             }
@@ -2409,12 +2352,7 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: false,
-                            single: true,
-                            repeat_after: true,
-                            n_time: None,
-                        }),
+                        T::OpenRepeat
                     ]
                 )
             }
@@ -2429,12 +2367,7 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: true,
-                            single: true,
-                            repeat_after: false,
-                            n_time: None,
-                        }),
+                        T::CloseRepeat
                     ]
                 )
             }
@@ -2449,12 +2382,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: true,
-                            single: true,
-                            repeat_after: true,
-                            n_time: None,
-                        }),
+                        T::CloseRepeat,
+                        T::OpenRepeat
                     ]
                 )
             }
@@ -2469,12 +2398,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: true,
-                            single: true,
-                            repeat_after: true,
-                            n_time: None,
-                        }),
+                        T::CloseRepeat,
+                        T::OpenRepeat
                     ]
                 )
             }
@@ -2489,12 +2414,7 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: false,
-                            single: false,
-                            repeat_after: false,
-                            n_time: None,
-                        }),
+                       T::DoubleBar
                     ]
                 )
             }
@@ -2516,12 +2436,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: false,
-                            single: true,
-                            repeat_after: false,
-                            n_time: Some(1),
-                        }),
+                        T::SingleBar,
+                        T::NTimeBar(1)
                     ]
                 )
             }
@@ -2537,12 +2453,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: false,
-                            single: true,
-                            repeat_after: false,
-                            n_time: Some(1),
-                        }),
+                        T::SingleBar,
+                        T::NTimeBar(1)
                     ]
                 )
             }
@@ -2557,12 +2469,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: true,
-                            single: true,
-                            repeat_after: false,
-                            n_time: Some(2),
-                        }),
+                        T::CloseRepeat,
+                        T::NTimeBar(2)
                     ]
                 )
             }
@@ -2577,12 +2485,8 @@ K:    GFmaj
                 assert_eq!(
                     tokens,
                     &[
-                        T::Barline(music::Barline {
-                            repeat_before: true,
-                            single: true,
-                            repeat_after: false,
-                            n_time: Some(2),
-                        }),
+                        T::CloseRepeat,
+                        T::NTimeBar(2)
                     ]
                 )
             }

@@ -9,7 +9,7 @@ mod geometry;
 mod midi;
 mod ngram;
 mod text;
-mod tune_ast;
+// mod tune_ast;
 mod tune_ast_two;
 mod viz;
 mod music;
@@ -50,8 +50,8 @@ fn main_check() {
         return;
     }
 
-    let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
-    println!("Tune: {:#?}", ast);
+    // let ast = tune_ast_two::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    // println!("Tune: {:#?}", ast);
 }
 
 
@@ -76,11 +76,11 @@ fn main_typeset() {
         return;
     }
 
-    let ast = tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    // let ast = tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars));
+// 
+    // let typeset = typeset::typeset_from_ast(ast);
 
-    let typeset = typeset::typeset_from_ast(ast);
-
-    println!("{}", typeset);
+    // println!("{}", typeset);
 }
 
 /// Visualise an ABC file. Whatever that means.

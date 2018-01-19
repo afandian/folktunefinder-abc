@@ -171,62 +171,64 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
                 }
             }
             &l::T::DefaultNoteLength(new_note_length) => note_length = new_note_length,
-            &l::T::Barline(ref barline) => {
+            // &l::T::Barline(ref barline) => {
 
-                // End of a bar, flush the sequence, if there is one.
-                if sequence.len() > 0 {
-                    bar.sequences.push(sequence);
-                    sequence = vec![];
-                }
-
-
-                // Where should we put this bar?
-                match section_mode {
-                    SectionMode::Main => {
-                        section.main.push(bar);
-                    }
-                    SectionMode::NTimeBar(_) => {
-                        // TODO DISCARDING N!
-                        // There will always be a last due to the section_mode change below.
-                        section.n_time_bars.last_mut().unwrap().push(bar);
-                    }
-                }
-                bar = Bar::new();
-
-                // This signals the start of an n-time bar.
-                if let Some(n_time) = barline.n_time {
-                    section_mode = SectionMode::NTimeBar(n_time);
-                    section.n_time_bars.push(vec![]);
-                } else {
-                    // Is this starting a new repeated section?
-                    // Don't need to record the repeat mark, it's implicit in the structure.
-                    // Also it's often optional anyway.
-                    if barline.repeat_after {
-                        section_mode = SectionMode::Main;
-                    }
-
-                    // Is this closing a repeated section?
-                    if barline.repeat_before {
-                        section.repeat = true;
-                        tune.sections.push(section);
-                        section = Section::new();
-                        section_mode = SectionMode::Main;
-                    }
-
-                    if !barline.single {
-                        tune.sections.push(section);
-                        section = Section::new();
-                        section_mode = SectionMode::Main;
-                    }
-                }
+            //     // End of a bar, flush the sequence, if there is one.
+            //     if sequence.len() > 0 {
+            //         bar.sequences.push(sequence);
+            //         sequence = vec![];
+            //     }
 
 
+            //     // Where should we put this bar?
+            //     match section_mode {
+            //         SectionMode::Main => {
+            //             section.main.push(bar);
+            //         }
+            //         SectionMode::NTimeBar(_) => {
+            //             // TODO DISCARDING N!
+            //             // There will always be a last due to the section_mode change below.
+            //             section.n_time_bars.last_mut().unwrap().push(bar);
+            //         }
+            //     }
+            //     bar = Bar::new();
 
-            }
+            //     // This signals the start of an n-time bar.
+            //     if let Some(n_time) = barline.n_time {
+            //         section_mode = SectionMode::NTimeBar(n_time);
+            //         section.n_time_bars.push(vec![]);
+            //     } else {
+            //         // Is this starting a new repeated section?
+            //         // Don't need to record the repeat mark, it's implicit in the structure.
+            //         // Also it's often optional anyway.
+            //         if barline.repeat_after {
+            //             section_mode = SectionMode::Main;
+            //         }
+
+            //         // Is this closing a repeated section?
+            //         if barline.repeat_before {
+            //             section.repeat = true;
+            //             tune.sections.push(section);
+            //             section = Section::new();
+            //             section_mode = SectionMode::Main;
+            //         }
+
+            //         if !barline.single {
+            //             tune.sections.push(section);
+            //             section = Section::new();
+            //             section_mode = SectionMode::Main;
+            //         }
+            //     }
+
+
+
+            // }
             &l::T::Note(ref note) => {
                 sequence.push(SequentialEntity::Note(note.resolve_duration(note_length)))
             }
             &l::T::BeamBreak => (),
+
+            _ => println!("TODO! Unhandled")
         }
 
 
