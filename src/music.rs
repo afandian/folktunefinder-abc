@@ -1,4 +1,4 @@
-const NOTES_IN_SCALE: i16 = 7;
+pub const NOTES_IN_SCALE: i16 = 7;
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum DiatonicPitchClass {
@@ -48,7 +48,7 @@ impl Accidental {
 
 /// Musical Mode
 /// Some of these are synonyms, but we want to record what was written.
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum Mode {
     Natural,
 
@@ -64,7 +64,7 @@ pub enum Mode {
     Minor,
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub enum ClefShape {
     Treble,
 }
@@ -81,12 +81,12 @@ impl ClefShape {
     }
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Clef {
-    shape: ClefShape,
+    pub shape: ClefShape,
     // Position on stave relative to middle line.
-    centre: i16,
-    pitch: PitchClass,
+    pub centre: i32,
+    pub pitch: Pitch,
 }
 
 impl Clef {
@@ -94,10 +94,13 @@ impl Clef {
     pub fn treble() -> Clef {
         Clef {
             shape: ClefShape::Treble,
-            centre: 3,
-            pitch: PitchClass {
-                diatonic_pitch_class: DiatonicPitchClass::G,
-                accidental: None,
+            centre: 2,
+            pitch: Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::G,
+                    accidental: None,
+                },
+                octave: 0,
             },
         }
     }
@@ -115,9 +118,9 @@ pub struct PitchClass {
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Interval {
     /// Interval
-    pitch_classes: i16,
+    pub pitch_classes: i32,
     /// Accidental
-    accidental_semitones: i16,
+    pub accidental_semitones: i16,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -145,7 +148,7 @@ impl Pitch {
             };
 
         Interval {
-            pitch_classes: degrees,
+            pitch_classes: degrees as i32,
             accidental_semitones: accidental,
         }
     }

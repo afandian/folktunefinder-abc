@@ -601,63 +601,87 @@ fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
 /// TODO all tests for this!
 fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
+    // Every barline includes some kind of beam break.
+
     if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
+        LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
-        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
+        LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::OpenRepeat)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
+        let (ctx, n_time) = read_n_time(ctx);
+
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => {
+                LexResult::tttt(
+                    ctx,
+                    T::BeamBreak,
+                    T::CloseRepeat,
+                    T::DoubleBar,
+                    T::NTimeBar(n_time),
+                )
+            }
+            (ctx, Nil) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::DoubleBar),
+        }
+
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ']']) {
+
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => {
+                LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::NTimeBar(n_time))
+            }
+            (ctx, Nil) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::EndBar),
+        }
+
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|']) {
 
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => LexResult::tt(ctx, T::CloseRepeat, T::NTimeBar(n_time)),
-            (ctx, Nil) => LexResult::t(ctx, T::CloseRepeat),
+            (ctx, Some(n_time)) => {
+                LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::NTimeBar(n_time))
+            }
+            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::CloseRepeat),
         }
 
 
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
-        LexResult::tt(ctx, T::DoubleBar, T::OpenRepeat)
+        LexResult::ttt(ctx, T::BeamBreak, T::DoubleBar, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::t(ctx, T::OpenRepeat)
-    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
-        let (ctx, n_time) = read_n_time(ctx);
-
-        
-        match read_n_time(ctx) {
-            (ctx, Some(n_time)) => LexResult::ttt(ctx, T::CloseRepeat, T::DoubleBar, T::NTimeBar(n_time)),
-            (ctx, Nil) => LexResult::tt(ctx, T::CloseRepeat, T::DoubleBar),
-        }
-
-        
-
+        LexResult::tt(ctx, T::BeamBreak, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|']) {
         let (ctx, n_time) = read_n_time(ctx);
 
-        
+
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => LexResult::tt(ctx, T::DoubleBar, T::NTimeBar(n_time)),
-            (ctx, Nil) => LexResult::t(ctx, T::DoubleBar),
+            (ctx, Some(n_time)) => {
+                LexResult::ttt(ctx, T::BeamBreak, T::DoubleBar, T::NTimeBar(n_time))
+            }
+            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::DoubleBar),
         }
 
-        
+
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ']']) {
         let (ctx, n_time) = read_n_time(ctx);
 
-    
+
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => LexResult::tt(ctx, T::EndBar, T::NTimeBar(n_time)),
-            (ctx, Nil) => LexResult::t(ctx, T::EndBar),
+            (ctx, Some(n_time)) => {
+                LexResult::ttt(ctx, T::BeamBreak, T::EndBar, T::NTimeBar(n_time))
+            }
+            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::EndBar),
         }
 
-        
+
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
-        LexResult::t(ctx, T::OpenRepeat)
+        LexResult::tt(ctx, T::BeamBreak, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', ':']) {
-        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
+        LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
-        LexResult::tt(ctx, T::CloseRepeat, T::OpenRepeat)
+        LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|']) {
-         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => LexResult::tt(ctx, T::SingleBar, T::NTimeBar(n_time)),
-            (ctx, Nil) => LexResult::t(ctx, T::SingleBar),
+        match read_n_time(ctx) {
+            (ctx, Some(n_time)) => {
+                LexResult::ttt(ctx, T::BeamBreak, T::SingleBar, T::NTimeBar(n_time))
+            }
+            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::SingleBar),
         }
     } else {
         LexResult::Error(ctx, ctx.i, LexError::UnrecognisedBarline)
@@ -2333,14 +2357,7 @@ K:    GFmaj
         let input = &(string_to_vec("|".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::SingleBar
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::BeamBreak, T::SingleBar]),
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2348,14 +2365,7 @@ K:    GFmaj
         let input = &(string_to_vec("|:".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::OpenRepeat
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::BeamBreak, T::OpenRepeat]),
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2363,13 +2373,16 @@ K:    GFmaj
         let input = &(string_to_vec(":|".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat]),
+
+            x => assert!(false, "Expected barline got: {:?}", x),
+        }
+
+        let input = &(string_to_vec(":|]".to_string()));
+        let ctx = Context::new(input);
+        match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::CloseRepeat
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat, T::EndBar])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2379,13 +2392,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::CloseRepeat,
-                        T::OpenRepeat
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat, T::OpenRepeat])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2395,13 +2402,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::CloseRepeat,
-                        T::OpenRepeat
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat, T::OpenRepeat])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2410,14 +2411,7 @@ K:    GFmaj
         let input = &(string_to_vec("||".to_string()));
         let ctx = Context::new(input);
         match lex_barline(ctx) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                       T::DoubleBar
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::BeamBreak, T::DoubleBar]),
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
@@ -2433,13 +2427,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::SingleBar,
-                        T::NTimeBar(1)
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::SingleBar, T::NTimeBar(1)])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2450,13 +2438,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::SingleBar,
-                        T::NTimeBar(1)
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::SingleBar, T::NTimeBar(1)])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2466,13 +2448,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::CloseRepeat,
-                        T::NTimeBar(2)
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat, T::NTimeBar(2)])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2482,13 +2458,7 @@ K:    GFmaj
         let ctx = Context::new(input);
         match lex_barline(ctx) {
             LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::CloseRepeat,
-                        T::NTimeBar(2)
-                    ]
-                )
+                assert_eq!(tokens, &[T::BeamBreak, T::CloseRepeat, T::NTimeBar(2)])
             }
 
             x => assert!(false, "Expected barline got: {:?}", x),
@@ -2593,5 +2563,4 @@ K:    GFmaj
             "Offset is incremented for some prefix of some."
         );
     }
-
 }

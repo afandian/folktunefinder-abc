@@ -10,7 +10,7 @@ mod midi;
 mod ngram;
 mod text;
 // mod tune_ast;
-mod tune_ast_two;
+mod tune_ast_three;
 mod viz;
 mod music;
 mod typeset;
@@ -76,11 +76,14 @@ fn main_typeset() {
         return;
     }
 
-    // let ast = tune_ast::read_from_lexer(abc_lexer::Lexer::new(&chars));
-// 
-    // let typeset = typeset::typeset_from_ast(ast);
+    let ast = tune_ast_three::read_from_lexer(abc_lexer::Lexer::new(&chars));
+    eprintln!("AST: {:#?}", ast);
 
-    // println!("{}", typeset);
+    let typeset_page = typeset::typeset_from_ast(ast);
+
+    let svg = typeset::render_page(typeset_page);
+
+    println!("{}", svg);
 }
 
 /// Visualise an ABC file. Whatever that means.
@@ -114,7 +117,7 @@ fn main_viz() {
 
 
 fn main_unrecognised() {
-    println!(
+    eprintln!(
         "Unrecognised command. Try:
  - check
  - typeset
