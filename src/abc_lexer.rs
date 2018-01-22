@@ -16,6 +16,47 @@
 use std::fmt;
 use music;
 
+/// ABC Token.
+/// Shortened as it's used a lot.
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub enum T {
+    Newline,
+    BeamBreak,
+
+    // Text header fields.
+    Area(String),
+    Book(String),
+    Composer(String),
+    Discography(String),
+    Filename(String),
+    Group(String),
+    History(String),
+    Information(String),
+    Notes(String),
+    Origin(String),
+    Source(String),
+    Title(String),
+    Words(String),
+    X(String),
+    Transcription(String),
+
+    // More interesting header fields.
+    Metre(u32, u32),
+    KeySignature(music::PitchClass, music::Mode),
+    DefaultNoteLength(music::FractionalDuration),
+
+    SingleBar,
+    DoubleBar,
+    OpenRepeat,
+    CloseRepeat,
+    EndBar,
+    NTimeBar(u32),
+
+    Note(music::Note),
+}
+
+
+
 /// Which bit of the tune are we in?
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 enum TuneSection {
@@ -1079,44 +1120,6 @@ impl<'a> LexResult<'a> {
     }
 }
 
-/// ABC Token.
-/// Shortened as it's used a lot.
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub enum T {
-    Newline,
-    BeamBreak,
-
-    // Text header fields.
-    Area(String),
-    Book(String),
-    Composer(String),
-    Discography(String),
-    Filename(String),
-    Group(String),
-    History(String),
-    Information(String),
-    Notes(String),
-    Origin(String),
-    Source(String),
-    Title(String),
-    Words(String),
-    X(String),
-    Transcription(String),
-
-    // More interesting header fields.
-    Metre(u32, u32),
-    KeySignature(music::PitchClass, music::Mode),
-    DefaultNoteLength(music::FractionalDuration),
-
-    SingleBar,
-    DoubleBar,
-    OpenRepeat,
-    CloseRepeat,
-    EndBar,
-    NTimeBar(u32),
-
-    Note(music::Note),
-}
 
 /// Try to read a single T and return a new context.
 /// Note that there's a lot of aliasing of ctx in nested matches.
