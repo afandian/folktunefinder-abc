@@ -154,6 +154,51 @@ impl Pitch {
     }
 }
 
+/// Time signature
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+pub struct Metre(pub u32, pub u32);
+
+/// The duration class of a notehead, i.e. its shape.
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+pub enum DurationClass {
+    Semibreve,
+    Minim,
+    Crotchet,
+    Quaver,
+    Semiquaver,
+    Demisemiquaver,
+}
+
+// All duration classes, in order of duration.
+const DURATION_CLASSES: &[DurationClass] = &[
+    DurationClass::Semibreve,
+    DurationClass::Minim,
+    DurationClass::Crotchet,
+    DurationClass::Quaver,
+    DurationClass::Semiquaver,
+    DurationClass::Demisemiquaver,
+];
+
+impl DurationClass {
+    fn duration(&self) -> FractionalDuration {
+        match self {
+            &DurationClass::Semibreve => FractionalDuration(1, 1),
+            &DurationClass::Minim => FractionalDuration(1, 2),
+            &DurationClass::Crotchet => FractionalDuration(1, 4),
+            &DurationClass::Quaver => FractionalDuration(1, 8),
+            &DurationClass::Semiquaver => FractionalDuration(1, 16),
+            &DurationClass::Demisemiquaver => FractionalDuration(1, 32),
+        }
+    }
+}
+
+/// Represent a duration per notation.
+#[derive(Debug, PartialEq, Copy, Clone, PartialOrd)]
+pub struct DurationGlyph {
+    pub shape: DurationClass,
+    pub dots: u32,
+}
+
 /// A duration as a fraction of the default duration.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct FractionalDuration(pub u32, pub u32);
@@ -165,13 +210,84 @@ impl FractionalDuration {
 
         let vulgar = FractionalDuration(self.0 * other.0, self.1 * other.1);
 
-        let max = u32::max(vulgar.0, vulgar.1);
-        for i in (1..max).rev() {
-            if (vulgar.0 % i == 0) && (vulgar.1 % i) == 0 {
-                return FractionalDuration(vulgar.0 / i, vulgar.1 / i);
+        return vulgar.reduce();
+    }
+
+    pub fn subtract(self, other: FractionalDuration) -> FractionalDuration {
+        let self_numerator = self.0 * other.1;
+        let other_numerator = other.0 * self.1;
+        let denomenator = self.1 * other.1;
+
+        FractionalDuration(self_numerator - other_numerator, denomenator).reduce()
+    }
+
+    /// Reduce this fraction to its simplest form.
+    pub fn reduce(self) -> FractionalDuration {
+        let max = u32::max(self.0, self.1);
+        for i in (1..max + 1).rev() {
+
+            if (self.0 % i == 0) && (self.1 % i) == 0 {
+                return FractionalDuration(self.0 / i, self.1 / i);
             }
         }
-        return vulgar;
+
+        self
+    }
+
+    /// Is this duration greater than the other one?
+    /// TODO Implement PartialOrd properly!
+    pub fn gte(&self, other: &FractionalDuration) -> bool {
+        let self_numerator = self.0 * other.1;
+        let other_numerator = other.0 * self.1;
+        self_numerator >= other_numerator
+    }
+
+    /// Transform this duration into a notehead glyph.
+    /// i.e. "3/2" becomes "dotted crotchet".
+    /// TODO in future this may be represented as a sequence of tied glyphs
+    /// for complicted durations.
+    pub fn to_glyph(&self) -> Option<DurationGlyph> {
+        const MAX_DOTS: u32 = 4;
+
+        // Start with self's duration, keep chipping away until there's nothing left to represent.
+        let mut this = *self;
+
+        let mut result = None;
+
+        // Try each top level duration class first.
+        for duration_class in DURATION_CLASSES.iter() {
+
+            // When there's nothing left to represent, stop there.
+            if this.reduce() == FractionalDuration(0, 1) {
+                break;
+            }
+
+            let mut duration = duration_class.duration();
+            let mut num_dots = 0;
+
+            // It is possible to represent self duration using this duration class.
+            if this.gte(&duration) {
+                for _ in 0..MAX_DOTS + 1 {
+                    this = this.subtract(duration);
+
+                    if this.reduce() == FractionalDuration(0, 1) {
+
+                        break;
+                    }
+
+                    // Half the duration to correspond to another dot.
+                    duration = duration.multiply(FractionalDuration(1, 2));
+                    num_dots += 1;
+                }
+
+                result = Some(DurationGlyph {
+                    shape: *duration_class,
+                    dots: num_dots,
+                });
+            }
+        }
+
+        result
     }
 }
 
@@ -213,6 +329,158 @@ mod tests {
             FractionalDuration(1, 8).multiply(FractionalDuration(1, 2)),
             FractionalDuration(1, 2).multiply(FractionalDuration(1, 8)),
             "Multiply is commutative."
+        );
+    }
+
+    #[test]
+    fn fractional_duration_multiply_test() {
+        assert_eq!(FractionalDuration(1, 1).reduce(), FractionalDuration(1, 1));
+        assert_eq!(FractionalDuration(2, 2).reduce(), FractionalDuration(1, 1));
+        assert_eq!(
+            FractionalDuration(16, 16).reduce(),
+            FractionalDuration(1, 1)
+        );
+        assert_eq!(FractionalDuration(2, 4).reduce(), FractionalDuration(1, 2));
+        assert_eq!(FractionalDuration(2, 6).reduce(), FractionalDuration(1, 3));
+    }
+
+    #[test]
+    fn duration_to_glyph_simple_test() {
+        // Simple durations.
+        assert_eq!(
+            FractionalDuration(1, 1).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semibreve,
+                dots: 0,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(1, 2).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Minim,
+                dots: 0,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(1, 4).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Crotchet,
+                dots: 0,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(1, 8).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Quaver,
+                dots: 0,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(1, 16).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semiquaver,
+                dots: 0,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(1, 32).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Demisemiquaver,
+                dots: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn duration_to_glyph_dotted_test() {
+        assert_eq!(
+            FractionalDuration(3, 2).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semibreve,
+                dots: 1,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(3, 4).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Minim,
+                dots: 1,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(3, 8).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Crotchet,
+                dots: 1,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(3, 16).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Quaver,
+                dots: 1,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(3, 32).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semiquaver,
+                dots: 1,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(3, 64).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Demisemiquaver,
+                dots: 1,
+            })
+        );
+
+        // Two dots
+        assert_eq!(
+            FractionalDuration(7, 4).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semibreve,
+                dots: 2,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(7, 8).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Minim,
+                dots: 2,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(7, 16).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Crotchet,
+                dots: 2,
+            })
+        );
+        assert_eq!(
+            FractionalDuration(7, 32).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Quaver,
+                dots: 2,
+            })
+        );
+
+        assert_eq!(
+            FractionalDuration(7, 64).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Semiquaver,
+                dots: 2,
+            })
+        );
+
+        // A double-dotted semiquaver should be enough for anyone.
+        assert_eq!(
+            FractionalDuration(7, 128).to_glyph(),
+            Some(DurationGlyph {
+                shape: DurationClass::Demisemiquaver,
+                dots: 2,
+            })
         );
     }
 

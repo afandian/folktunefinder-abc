@@ -41,7 +41,7 @@ pub enum T {
     Transcription(String),
 
     // More interesting header fields.
-    Metre(u32, u32),
+    Metre(music::Metre),
     KeySignature(music::PitchClass, music::Mode),
     DefaultNoteLength(music::FractionalDuration),
 
@@ -371,9 +371,9 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         Ok((whole_line_ctx, content)) => {
 
             if content == &['C'] {
-                LexResult::t(ctx, T::Metre(4, 4))
+                LexResult::t(ctx, T::Metre(music::Metre(4, 4)))
             } else if content == &['C', '|'] {
-                LexResult::t(ctx, T::Metre(2, 4))
+                LexResult::t(ctx, T::Metre(music::Metre(2, 4)))
             } else {
                 // It's a numerical metre.
                 match read_number(ctx, NumberRole::UpperTimeSignature) {
@@ -388,7 +388,10 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                                     }
                                     Ok((ctx, denomenator)) => {
                                         // Skip one character for the delimiter.
-                                        LexResult::t(ctx.skip(1), T::Metre(numerator, denomenator))
+                                        LexResult::t(
+                                            ctx.skip(1),
+                                            T::Metre(music::Metre(numerator, denomenator)),
+                                        )
                                     }
                                 }
                             }
@@ -1766,8 +1769,8 @@ K:    GFmaj
                 T::Words("WORDS".to_string()),
                 T::X("100".to_string()),
                 T::Transcription("TRANSCRIPTION".to_string()),
-                T::Metre(2, 4),
-                T::Metre(5, 8),
+                T::Metre(music::Metre(2, 4)),
+                T::Metre(music::Metre(5, 8)),
                 T::DefaultNoteLength(music::FractionalDuration(1, 8)),
                 T::KeySignature(
                     music::PitchClass {
@@ -2112,12 +2115,24 @@ K:    GFmaj
         // Shorthand.
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("C\n")))), '\n') {
-            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::Metre(4, 4)], "C should be parsed"),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[T::Metre(music::Metre(4, 4))],
+                    "C should be parsed"
+                )
+            }
             _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("C|\n")))), '\n') {
-            LexResult::T(_, tokens) => assert_eq!(tokens, &[T::Metre(2, 4)], "C should be parsed"),
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[T::Metre(music::Metre(2, 4))],
+                    "C should be parsed"
+                )
+            }
             _ => assert!(false),
         }
 
@@ -2128,7 +2143,7 @@ K:    GFmaj
             LexResult::T(_, tokens) => {
                 assert_eq!(
                     tokens,
-                    &[T::Metre(2, 4)],
+                    &[T::Metre(music::Metre(2, 4))],
                     "2/4 time signature should be parsed"
                 )
             }
@@ -2139,7 +2154,7 @@ K:    GFmaj
             LexResult::T(_, tokens) => {
                 assert_eq!(
                     tokens,
-                    &[T::Metre(6, 8)],
+                    &[T::Metre(music::Metre(6, 8))],
                     "6/8 time signature should be parsed"
                 )
             }
@@ -2153,7 +2168,7 @@ K:    GFmaj
             LexResult::T(_, tokens) => {
                 assert_eq!(
                     tokens,
-                    &[T::Metre(200, 400)],
+                    &[T::Metre(music::Metre(200, 400))],
                     "Ridiculous but valid time signature should be parsed"
                 )
             }

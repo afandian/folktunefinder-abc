@@ -103,6 +103,14 @@ Currently work in progress is is 'check':
               I was in the middle of reading a time signature
 
 
+## Typesetting
+
+Mega work-in-progress.
+
+<img src="resouces/2018-01-22 at 23.23.16.png">
+
+<img src="resouces/2018-01-22 at 23.23.39.png">
+
 ## Getting started
 
 Install Cargo.

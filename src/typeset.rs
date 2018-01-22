@@ -3,10 +3,12 @@ use tune_ast_three;
 use abc_lexer as l;
 use music;
 
-const STAVE_WIDTH: f32 = 600.0;
+const STAVE_WIDTH: f32 = 1100.0;
 
 // Height of a single note head;
 const HEAD_HEIGHT: f32 = 10.0;
+
+const STEM_HEIGHT: f32 = 40.0;
 
 // Vertical padding between each stave.
 const STAVE_V_MARGIN: f32 = 20.0;
@@ -75,7 +77,9 @@ enum Glyph {
     EndBar,
     OpenRepeat,
     CloseRepeat,
-    NoteHead(i32),
+    /// Note head of (position-on-stave)
+    /// If we're unable to determine the glyph, can be none.
+    NoteHead(i32, Option<music::DurationGlyph>),
     Clef(music::Clef),
 }
 
@@ -94,7 +98,8 @@ impl Entity {
 
     fn width(&self) -> f32 {
         match self.glyph {
-            Glyph::NoteHead(_) => HEAD_HEIGHT * 2.0,
+            // TODO number of dots will make a difference.
+            Glyph::NoteHead(_, _) => HEAD_HEIGHT * 4.0,
             Glyph::SingleBar => 10.0,
             Glyph::DoubleBar => 20.0,
             Glyph::EndBar => 10.0,
@@ -201,10 +206,91 @@ impl Entity {
                 );
             }
 
-            Glyph::NoteHead(position) => {
-                let yy = y + (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT;
+            Glyph::NoteHead(position, glyph) => {
+                let yy = (y + (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT) -
+                    (HEAD_HEIGHT / 2.0);
 
-                svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                match glyph {
+                    None => {
+                        svg.text(x, yy, "?".to_string());
+                    }
+                    Some(music::DurationGlyph { shape, dots }) => {
+
+                        // Note head
+                        match shape {
+                            music::DurationClass::Semibreve |
+                            music::DurationClass::Minim => {
+                                svg.rect(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                            }
+
+                            
+                            music::DurationClass::Crotchet |
+                            music::DurationClass::Quaver |
+                            music::DurationClass::Semiquaver |
+                            music::DurationClass::Demisemiquaver => {
+                                svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                            }
+                        }
+
+                        // Stem
+                        match shape {
+                            music::DurationClass::Minim |
+                            music::DurationClass::Crotchet |
+                            music::DurationClass::Quaver |
+                            music::DurationClass::Semiquaver |
+                            music::DurationClass::Demisemiquaver => {
+                                svg.rect(
+                                    x + HEAD_HEIGHT * 1.5,
+                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
+                                    1.0,
+                                    STEM_HEIGHT
+                                );
+                            }
+
+                             _ => ()
+                        }
+
+                        // Tail 1
+                        match shape {
+                            music::DurationClass::Quaver |
+                            music::DurationClass::Semiquaver |
+                            music::DurationClass::Demisemiquaver => {
+                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT, HEAD_HEIGHT * 2.0, 2.0);
+                            }
+
+                            _ => ()
+                        }
+
+                        // Tail 2
+                        match shape {
+                            music::DurationClass::Semiquaver |
+                            music::DurationClass::Demisemiquaver => {
+                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 2.0, HEAD_HEIGHT * 2.0, 2.0);
+                            }
+
+                            _ => ()
+                        }
+
+                        // Tail 3
+                        match shape {
+                            music::DurationClass::Demisemiquaver => {
+                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 3.0, HEAD_HEIGHT * 2.0, 2.0);
+                            }
+
+                            _ => ()
+                        }
+
+                        for dot in 0..dots {
+                            svg.rect_fill(
+                                    x + HEAD_HEIGHT * 1.5 + (dot + 2) as f32 * HEAD_HEIGHT * 0.5,
+                                    yy - HEAD_HEIGHT / 2.0 ,
+                                    2.0, 2.0
+                                );
+                        }
+                    }
+
+                    // svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                }
             }
         }
     }
@@ -265,7 +351,7 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
         },
         music::Mode::Major,
     );
-    let mut metre = l::T::Metre(4, 4);
+    let mut metre = music::Metre(4, 4);
 
     // TODO We only ever use treble clef at the moment.
     let mut current_clef = music::Clef::treble();
@@ -275,7 +361,7 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
             l::T::KeySignature(pitch_class, mode) => {
                 key_signature = l::T::KeySignature(pitch_class, mode)
             }
-            l::T::Metre(u, d) => metre = l::T::Metre(u, d),
+            l::T::Metre(new_metre) => metre = new_metre,
             _ => (),
         }
     }
@@ -314,13 +400,15 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
 
                 l::T::Note(note) => {
                     // TODO extras like accidentals etc.
-                    let clef_interval = current_clef.pitch.interval_to(note.0);
+                    let music::Note(pitch, duration) = note;
+                    let clef_interval = current_clef.pitch.interval_to(pitch);
 
                     let position = (clef_interval.pitch_classes + current_clef.centre) as i32;
+                    let glyph = duration.to_glyph();
 
-                    current_stave.entities.push(
-                        Entity::new(Glyph::NoteHead(position)),
-                    );
+                    current_stave.entities.push(Entity::new(
+                        Glyph::NoteHead(position, glyph),
+                    ));
                 }
 
                 _ => {

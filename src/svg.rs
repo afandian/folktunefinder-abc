@@ -5,6 +5,7 @@ use std::fmt::Write;
 enum Entity {
     Rect(f32, f32, f32, f32),
     FillRect(f32, f32, f32, f32),
+    DebugRect(f32, f32, f32, f32),
     Text(f32, f32, String),
 }
 
@@ -61,6 +62,19 @@ impl Drawing {
                     ).unwrap();
                 }
 
+                &Entity::DebugRect(x, y, w, h) => {
+                    write!(
+                        &mut buf,
+                        "<rect x='{}' y='{}' width='{}' height='{}' \
+                                      style='stroke:red;stroke-width:1' />",
+                        x,
+                        y,
+                        w,
+                        h
+                    ).unwrap();
+                }
+
+
                 &Entity::Text(x, y, ref text) => {
                     // TOOD ESCAPE
                     write!(&mut buf, "<text x='{}' y='{}' >{}</text>", x, y, text).unwrap();
@@ -90,6 +104,13 @@ impl Drawing {
         self.ensure(x + w, y + h);
 
         self.entities.push(Entity::FillRect(x, y, w, h));
+    }
+
+    pub fn rect_debug(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        self.ensure(x, y);
+        self.ensure(x + w, y + h);
+
+        self.entities.push(Entity::DebugRect(x, y, w, h));
     }
 
     pub fn text(&mut self, x: f32, y: f32, text: String) {
