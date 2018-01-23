@@ -74,7 +74,6 @@ impl Drawing {
                     ).unwrap();
                 }
 
-
                 &Entity::Text(x, y, ref text) => {
                     // TOOD ESCAPE
                     write!(&mut buf, "<text x='{}' y='{}' >{}</text>", x, y, text).unwrap();

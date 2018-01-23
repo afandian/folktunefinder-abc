@@ -49,9 +49,7 @@ This will be a general purpose ABC tool. It may provide a range of functionality
  - 4/4 => C etc
 
 
-## To run
-
-Currently work in progress is is 'check':
+## Error checking
 
         $ cat test_resources/so-far.abc |  target/debug/abctool check
 
@@ -107,9 +105,9 @@ Currently work in progress is is 'check':
 
 Mega work-in-progress.
 
-<img src="progress/2018-01-22 at 23.23.16.png">
+    $ cat test_resources/butterfly.abc |  target/debug/abctool typeset
 
-<img src="progress/2018-01-22 at 23.23.39.png">
+<img src="progress/2018-01-23 at 23.06.00.png">
 
 ## Getting started
 

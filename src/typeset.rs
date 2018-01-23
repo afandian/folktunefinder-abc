@@ -3,10 +3,13 @@ use tune_ast_three;
 use abc_lexer as l;
 use music;
 
-const STAVE_WIDTH: f32 = 1100.0;
+/// Desired stave width.
+/// TODO update this when there are real glyphs.
+const STAVE_WIDTH: f32 = 800.0;
 
 // Height of a single note head;
 const HEAD_HEIGHT: f32 = 10.0;
+const HEAD_WIDTH: f32 = HEAD_HEIGHT * 1.25;
 
 const STEM_HEIGHT: f32 = 40.0;
 
@@ -18,6 +21,10 @@ const SYSTEM_V_MARGIN: f32 = 20.0;
 
 // How many lines (including spaces) in a stave.
 const LINES_IN_STAVE: i32 = 9;
+
+// If the scale is below this (i.e. we won't fill the line) then use the natural stave length.
+// Prevents non-full-width staves from being forced to be full width.
+const MINIMUM_STAVE_SCALE: f32 = 1.8;
 
 pub struct Typesetting {}
 
@@ -99,12 +106,22 @@ impl Entity {
     fn width(&self) -> f32 {
         match self.glyph {
             // TODO number of dots will make a difference.
-            Glyph::NoteHead(_, _) => HEAD_HEIGHT * 4.0,
-            Glyph::SingleBar => 10.0,
-            Glyph::DoubleBar => 20.0,
-            Glyph::EndBar => 10.0,
+            Glyph::NoteHead(_, glyph) => {
+                // Space for the head.
+                HEAD_WIDTH * 2.0 +
+                    // Space for the dots.
+                    match glyph {
+                        Some(music::DurationGlyph { shape, dots }) => HEAD_WIDTH * dots as f32,
+                        _ => 0.0,
+                    }
+            }
+
+            // TODO add padding, but in a way that is flush with the end of the line.
+            Glyph::SingleBar => 1.0,
+            Glyph::DoubleBar => 5.0,
+            Glyph::EndBar => 11.0,
             Glyph::OpenRepeat => 20.0,
-            Glyph::CloseRepeat => 20.0,
+            Glyph::CloseRepeat => 10.0,
 
             Glyph::Clef(_) => 50.0,
         }
@@ -191,7 +208,6 @@ impl Entity {
             }
             Glyph::EndBar => {
 
-
                 svg.rect(
                     x,
                     y + HEAD_HEIGHT,
@@ -207,8 +223,7 @@ impl Entity {
             }
 
             Glyph::NoteHead(position, glyph) => {
-                let yy = (y + (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT) -
-                    (HEAD_HEIGHT / 2.0);
+                let yy = (y + (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT);
 
                 match glyph {
                     None => {
@@ -220,15 +235,14 @@ impl Entity {
                         match shape {
                             music::DurationClass::Semibreve |
                             music::DurationClass::Minim => {
-                                svg.rect(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                                svg.rect(x, yy - HEAD_HEIGHT / 2.0, HEAD_WIDTH, HEAD_HEIGHT);
                             }
 
-                            
                             music::DurationClass::Crotchet |
                             music::DurationClass::Quaver |
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
+                                svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_WIDTH, HEAD_HEIGHT);
                             }
                         }
 
@@ -241,13 +255,13 @@ impl Entity {
                             music::DurationClass::Demisemiquaver => {
                                 svg.rect(
                                     x + HEAD_HEIGHT * 1.5,
-                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
+                                    yy + HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
                                     1.0,
-                                    STEM_HEIGHT
+                                    STEM_HEIGHT,
                                 );
                             }
 
-                             _ => ()
+                            _ => (),
                         }
 
                         // Tail 1
@@ -255,37 +269,53 @@ impl Entity {
                             music::DurationClass::Quaver |
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT, HEAD_HEIGHT * 2.0, 2.0);
+                                svg.rect_fill(
+                                    x + HEAD_HEIGHT + 1.5,
+                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
+                                    HEAD_HEIGHT * 2.0,
+                                    2.0,
+                                );
                             }
 
-                            _ => ()
+                            _ => (),
                         }
 
                         // Tail 2
                         match shape {
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 2.0, HEAD_HEIGHT * 2.0, 2.0);
+                                svg.rect_fill(
+                                    x + HEAD_HEIGHT + 1.5,
+                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 2.0,
+                                    HEAD_HEIGHT * 2.0,
+                                    2.0,
+                                );
                             }
 
-                            _ => ()
+                            _ => (),
                         }
 
                         // Tail 3
                         match shape {
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(x + HEAD_HEIGHT + 1.5, yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 3.0, HEAD_HEIGHT * 2.0, 2.0);
+                                svg.rect_fill(
+                                    x + HEAD_HEIGHT + 1.5,
+                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 3.0,
+                                    HEAD_HEIGHT * 2.0,
+                                    2.0,
+                                );
                             }
 
-                            _ => ()
+                            _ => (),
                         }
 
                         for dot in 0..dots {
                             svg.rect_fill(
-                                    x + HEAD_HEIGHT * 1.5 + (dot + 2) as f32 * HEAD_HEIGHT * 0.5,
-                                    yy - HEAD_HEIGHT / 2.0 ,
-                                    2.0, 2.0
-                                );
+                                x + HEAD_HEIGHT * 1.5 + (dot + 2) as f32 * HEAD_HEIGHT * 0.5,
+                                yy - HEAD_HEIGHT / 2.0,
+                                2.0,
+                                2.0,
+                            );
                         }
                     }
 
@@ -313,7 +343,20 @@ impl Stave {
     }
 
     fn render(&self, svg: &mut svg::Drawing, y: f32) {
+        let natural_width: f32 = self.entities.iter().map(|entity| entity.width()).sum();
+
+        // TODO check divide by zero
+        let scale = f32::min(STAVE_WIDTH / natural_width, MINIMUM_STAVE_SCALE);
+
+        // TODO exclude the front-matter (clef, key, metre etc) and final bar from justification.
+
         let mut x = 0.0;
+        for entity in self.entities.iter() {
+            entity.render(svg, x * scale, y);
+            x += entity.width();
+        }
+
+        let stave_width: f32 = natural_width * scale;
 
         for bar_i in 0..LINES_IN_STAVE {
             let yy = y + (LINES_IN_STAVE - bar_i) as f32 * HEAD_HEIGHT;
@@ -324,17 +367,11 @@ impl Stave {
 
 
             if bar_i % 2 == 0 {
-                svg.rect(x, yy, STAVE_WIDTH, 1.0);
+                svg.rect(0.0, yy, stave_width, 1.0);
 
             }
         }
 
-        for entity in self.entities.iter() {
-
-            entity.render(svg, x, y);
-
-            x += entity.width();
-        }
     }
 }
 
