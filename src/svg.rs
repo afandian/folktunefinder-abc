@@ -7,6 +7,8 @@ enum Entity {
     FillRect(f32, f32, f32, f32),
     DebugRect(f32, f32, f32, f32),
     Text(f32, f32, String),
+    LinePath(f32, f32, String),
+    Circle(f32, f32, f32, bool),
 }
 
 pub struct Drawing {
@@ -66,7 +68,7 @@ impl Drawing {
                     write!(
                         &mut buf,
                         "<rect x='{}' y='{}' width='{}' height='{}' \
-                                      style='stroke:red;stroke-width:1' />",
+                                      style='fill:none;stroke:red;stroke-width:2' />",
                         x,
                         y,
                         w,
@@ -77,6 +79,29 @@ impl Drawing {
                 &Entity::Text(x, y, ref text) => {
                     // TOOD ESCAPE
                     write!(&mut buf, "<text x='{}' y='{}' >{}</text>", x, y, text).unwrap();
+                }
+
+                &Entity::LinePath(x, y, ref path) => {
+                    write!(
+                        &mut buf,
+                        "<path d='{}' stroke-width='2' stroke='black'
+                         fill='none' transform='translate({} {})' />",
+                        path,
+                        x,
+                        y
+                    );
+                }
+
+                &Entity::Circle(x, y, radius, fill) => {
+                    write!(
+                        &mut buf,
+                        "<circle cx='{}' cy='{}' r='{}' stroke-width='2'
+                         stroke='black' fill='{}' />",
+                        x,
+                        y,
+                        radius,
+                        if fill { "black" } else { "none" }
+                    );
                 }
             }
         }
@@ -112,9 +137,28 @@ impl Drawing {
         self.entities.push(Entity::DebugRect(x, y, w, h));
     }
 
+    pub fn point_debug(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        self.ensure(x, y);
+        self.ensure(x + w, y + h);
+
+        self.entities.push(Entity::DebugRect(x, y, 1.0, 1.0));
+    }
+
     pub fn text(&mut self, x: f32, y: f32, text: String) {
         self.ensure(x, y);
 
         self.entities.push(Entity::Text(x, y, text));
+    }
+
+    pub fn line_path(&mut self, x: f32, y: f32, path: String) {
+        self.ensure(x, y);
+        self.entities.push(Entity::LinePath(x, y, path));
+    }
+
+
+    pub fn circle(&mut self, x: f32, y: f32, radius: f32, fill: bool) {
+        self.ensure(x - radius, y - radius);
+        self.ensure(x + radius, y + radius);
+        self.entities.push(Entity::Circle(x, y, radius, fill));
     }
 }

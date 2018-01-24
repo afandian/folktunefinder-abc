@@ -107,7 +107,13 @@ Mega work-in-progress.
 
     $ cat test_resources/butterfly.abc |  target/debug/abctool typeset
 
-<img src="progress/2018-01-23 at 23.06.00.png">
+With minims and crotchets:
+
+<img src="progress/2018-01-25 at 00.13.30.png">
+
+With quavers and semiquavers:
+
+<img src="progress/2018-01-25 at 00.13.52.png">
 
 ## Getting started
 

@@ -9,6 +9,10 @@ const STAVE_WIDTH: f32 = 800.0;
 
 // Height of a single note head;
 const HEAD_HEIGHT: f32 = 10.0;
+
+// This crops up for aligning to the side of a note.
+const HALF_HEAD_HEIGHT: f32 = HEAD_HEIGHT / 2.0;
+
 const HEAD_WIDTH: f32 = HEAD_HEIGHT * 1.25;
 
 const STEM_HEIGHT: f32 = 40.0;
@@ -92,6 +96,11 @@ enum Glyph {
 
 impl Glyph {}
 
+fn draw_tail(svg: &mut svg::Drawing, x: f32, y: f32) {
+    svg.point_debug(x, y, 10.0, 10.0);
+    svg.line_path(x, y, "M0 0 l2 1 l5 3 l2 14 l-2 5".to_string());
+}
+
 /// Entity
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 struct Entity {
@@ -118,8 +127,8 @@ impl Entity {
 
             // TODO add padding, but in a way that is flush with the end of the line.
             Glyph::SingleBar => 1.0,
-            Glyph::DoubleBar => 5.0,
-            Glyph::EndBar => 11.0,
+            Glyph::DoubleBar => 3.0,
+            Glyph::EndBar => 8.0,
             Glyph::OpenRepeat => 20.0,
             Glyph::CloseRepeat => 10.0,
 
@@ -180,7 +189,6 @@ impl Entity {
                     dot_size,
                 );
 
-
             }
             Glyph::CloseRepeat => {
                 let dot_size = 6.0;
@@ -235,14 +243,24 @@ impl Entity {
                         match shape {
                             music::DurationClass::Semibreve |
                             music::DurationClass::Minim => {
-                                svg.rect(x, yy - HEAD_HEIGHT / 2.0, HEAD_WIDTH, HEAD_HEIGHT);
+                                svg.circle(
+                                    x + HEAD_WIDTH / 2.0,
+                                    yy + HEAD_WIDTH / 2.0,
+                                    HEAD_WIDTH / 2.0,
+                                    false,
+                                );
                             }
 
                             music::DurationClass::Crotchet |
                             music::DurationClass::Quaver |
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_WIDTH, HEAD_HEIGHT);
+                                svg.circle(
+                                    x + HEAD_WIDTH / 2.0,
+                                    yy + HEAD_WIDTH / 2.0,
+                                    HEAD_WIDTH / 2.0,
+                                    true,
+                                );
                             }
                         }
 
@@ -254,8 +272,8 @@ impl Entity {
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
                                 svg.rect(
-                                    x + HEAD_HEIGHT * 1.5,
-                                    yy + HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
+                                    x + HEAD_WIDTH,
+                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT,
                                     1.0,
                                     STEM_HEIGHT,
                                 );
@@ -269,12 +287,7 @@ impl Entity {
                             music::DurationClass::Quaver |
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(
-                                    x + HEAD_HEIGHT + 1.5,
-                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT,
-                                    HEAD_HEIGHT * 2.0,
-                                    2.0,
-                                );
+                                draw_tail(svg, x + HEAD_WIDTH, yy + HALF_HEAD_HEIGHT - STEM_HEIGHT);
                             }
 
                             _ => (),
@@ -284,11 +297,10 @@ impl Entity {
                         match shape {
                             music::DurationClass::Semiquaver |
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(
-                                    x + HEAD_HEIGHT + 1.5,
-                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 2.0,
-                                    HEAD_HEIGHT * 2.0,
-                                    2.0,
+                                draw_tail(
+                                    svg,
+                                    x + HEAD_WIDTH,
+                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT + 8.0,
                                 );
                             }
 
@@ -298,11 +310,10 @@ impl Entity {
                         // Tail 3
                         match shape {
                             music::DurationClass::Demisemiquaver => {
-                                svg.rect_fill(
-                                    x + HEAD_HEIGHT + 1.5,
-                                    yy - HEAD_HEIGHT / 2.0 - STEM_HEIGHT + HEAD_HEIGHT * 3.0,
-                                    HEAD_HEIGHT * 2.0,
-                                    2.0,
+                                draw_tail(
+                                    svg,
+                                    x + HEAD_WIDTH,
+                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT + 16.0,
                                 );
                             }
 
@@ -310,12 +321,13 @@ impl Entity {
                         }
 
                         for dot in 0..dots {
-                            svg.rect_fill(
-                                x + HEAD_HEIGHT * 1.5 + (dot + 2) as f32 * HEAD_HEIGHT * 0.5,
+                            svg.circle(
+                                x + HEAD_WIDTH + (dot + 2) as f32 * HEAD_HEIGHT * 0.5,
                                 yy - HEAD_HEIGHT / 2.0,
                                 2.0,
-                                2.0,
+                                true,
                             );
+
                         }
                     }
 
@@ -345,18 +357,83 @@ impl Stave {
     fn render(&self, svg: &mut svg::Drawing, y: f32) {
         let natural_width: f32 = self.entities.iter().map(|entity| entity.width()).sum();
 
-        // TODO check divide by zero
-        let scale = f32::min(STAVE_WIDTH / natural_width, MINIMUM_STAVE_SCALE);
+        // Front matter is the stuff at the start of the line that should be typeset rigidly.
+        let front_matter: Vec<&Entity> = self.entities
+            .iter()
+            .take_while(|x| {
+                match x.glyph {
+                    // Normal front matter things.
+                    // TODO time signature, key signature.
+                    Glyph::Clef(_) => true,
 
-        // TODO exclude the front-matter (clef, key, metre etc) and final bar from justification.
+                    // Any kind of barline should be part of front matter.
+                    // Even weird things that shouldn't be there like close repeat.
+                    Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
+                    Glyph::CloseRepeat => true,
 
+                    // Notehead and friends are definitely out.
+                    // TODO no catch-all until all glyph types initially settled.
+                    Glyph::NoteHead(_, _) => false,
+                }
+            })
+            .collect();
+
+        // Not-front-matter is the rest of the line that should be laid out proportionally.
+        let not_front_matter: Vec<&Entity> =
+            self.entities.iter().skip(front_matter.len()).collect();
+
+        let mut end_matter: Vec<&Entity> = not_front_matter
+            .iter()
+            .rev()
+            .map(|x| *x)
+            .take_while(|x| match x.glyph {
+                Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
+                Glyph::CloseRepeat => true,
+                _ => false,
+            })
+            .collect();
+        end_matter.reverse();
+
+        // And the remaining section is the bit that can be justified.
+        let justifiable = &not_front_matter[0..not_front_matter.len() - end_matter.len()];
+
+
+        // Running X offset for each glyph.
         let mut x = 0.0;
-        for entity in self.entities.iter() {
-            entity.render(svg, x * scale, y);
+
+        let front_matter_width: f32 = front_matter.iter().map(|x| x.width()).sum();
+        let end_matter_width: f32 = end_matter.iter().map(|x| x.width()).sum();
+        let justifiable_width: f32 = justifiable.iter().map(|x| x.width()).sum();
+
+        // TODO prevent divide by zero
+        let justifiable_scale = (STAVE_WIDTH - (front_matter_width + end_matter_width)) /
+            justifiable_width;
+        let justifiable_scale = f32::min(STAVE_WIDTH / justifiable_width, MINIMUM_STAVE_SCALE);
+
+        // Stave width doesn't always add up to the ideal STAVE_WIDTH,
+        // i.e. a short stave for a short line.
+        let stave_width: f32 = (justifiable_width * justifiable_scale) + front_matter_width +
+            end_matter_width;
+
+        // Always typeset front matter at the scale it wants.
+        for entity in front_matter.iter() {
+            entity.render(svg, x, y);
             x += entity.width();
         }
 
-        let stave_width: f32 = natural_width * scale;
+        for entity in justifiable.iter() {
+            entity.render(svg, x, y);
+            x += entity.width() * justifiable_scale;
+        }
+
+        // Rewind from the end of the line to draw the fixed-width end-matter.
+        // This could be different to the current value of x.
+        x = stave_width - end_matter_width;
+        for entity in end_matter.iter() {
+            entity.render(svg, x, y);
+            x += entity.width();
+        }
+
 
         for bar_i in 0..LINES_IN_STAVE {
             let yy = y + (LINES_IN_STAVE - bar_i) as f32 * HEAD_HEIGHT;
