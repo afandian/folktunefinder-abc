@@ -190,6 +190,18 @@ impl DurationClass {
             &DurationClass::Demisemiquaver => FractionalDuration(1, 32),
         }
     }
+
+    // How many beams / tails does this duration render as?
+    pub fn beams(&self) -> u32 {
+        match self {
+            &DurationClass::Semibreve => 0,
+            &DurationClass::Minim => 0,
+            &DurationClass::Crotchet => 0,
+            &DurationClass::Quaver => 1,
+            &DurationClass::Semiquaver => 2,
+            &DurationClass::Demisemiquaver => 3,
+        }
+    }
 }
 
 /// Represent a duration per notation.

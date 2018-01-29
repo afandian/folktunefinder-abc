@@ -8,6 +8,7 @@ enum Entity {
     DebugRect(f32, f32, f32, f32),
     Text(f32, f32, String),
     LinePath(f32, f32, String),
+    Line(f32, f32, f32, f32),
     Circle(f32, f32, f32, bool),
 }
 
@@ -103,6 +104,18 @@ impl Drawing {
                         if fill { "black" } else { "none" }
                     );
                 }
+
+                &Entity::Line(x, y, xx, yy) => {
+                    write!(
+                        &mut buf,
+                        "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke-width='2'
+                         stroke='black' />",
+                        x,
+                        y,
+                        xx,
+                        yy
+                    );
+                }
             }
         }
 
@@ -153,6 +166,13 @@ impl Drawing {
     pub fn line_path(&mut self, x: f32, y: f32, path: String) {
         self.ensure(x, y);
         self.entities.push(Entity::LinePath(x, y, path));
+    }
+
+
+    pub fn line(&mut self, x: f32, y: f32, xx: f32, yy: f32) {
+        self.ensure(x, y);
+        self.ensure(xx, yy);
+        self.entities.push(Entity::Line(x, y, xx, yy));
     }
 
 

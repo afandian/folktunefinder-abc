@@ -109,11 +109,7 @@ Mega work-in-progress.
 
 With minims and crotchets:
 
-<img src="progress/2018-01-25 at 00.13.30.png">
-
-With quavers and semiquavers:
-
-<img src="progress/2018-01-25 at 00.13.52.png">
+<img src="progress/2018-01-29 at 23.07.52.png">
 
 ## Getting started
 

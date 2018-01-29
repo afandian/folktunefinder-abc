@@ -2,6 +2,7 @@ use svg;
 use tune_ast_three;
 use abc_lexer as l;
 use music;
+use std::iter::FromIterator;
 
 /// Desired stave width.
 /// TODO update this when there are real glyphs.
@@ -92,12 +93,12 @@ enum Glyph {
     /// If we're unable to determine the glyph, can be none.
     NoteHead(i32, Option<music::DurationGlyph>),
     Clef(music::Clef),
+    BeamBreak,
 }
 
 impl Glyph {}
 
 fn draw_tail(svg: &mut svg::Drawing, x: f32, y: f32) {
-    svg.point_debug(x, y, 10.0, 10.0);
     svg.line_path(x, y, "M0 0 l2 1 l5 3 l2 14 l-2 5".to_string());
 }
 
@@ -105,11 +106,44 @@ fn draw_tail(svg: &mut svg::Drawing, x: f32, y: f32) {
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 struct Entity {
     glyph: Glyph,
+    x: f32,
 }
 
 impl Entity {
     fn new(glyph: Glyph) -> Entity {
-        Entity { glyph: glyph }
+        Entity {
+            glyph: glyph,
+            x: 0.0,
+        }
+    }
+
+    /// Does this constitute the type of glyph that should be included in front matter?
+    fn is_front_matter(&self) -> bool {
+        match self.glyph {
+            // Normal front matter things.
+            // TODO time signature, key signature.
+            Glyph::Clef(_) => true,
+
+            // Any kind of barline should be part of front matter.
+            // Even weird things that shouldn't be there like close repeat.
+            Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
+            Glyph::CloseRepeat => true,
+
+            // Notehead and friends are definitely out.
+            // TODO no catch-all until all glyph types initially settled.
+            Glyph::NoteHead(_, _) => false,
+
+            Glyph::BeamBreak => false,
+        }
+    }
+
+    /// Does this constitute the type of glyph that should be included in end matter?
+    fn is_end_matter(&self) -> bool {
+        match self.glyph {
+            Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
+            Glyph::CloseRepeat => true,
+            _ => false,
+        }
     }
 
     fn width(&self) -> f32 {
@@ -133,10 +167,41 @@ impl Entity {
             Glyph::CloseRepeat => 10.0,
 
             Glyph::Clef(_) => 50.0,
+
+            // Beam breaks are invisible.
+            Glyph::BeamBreak => 0.0,
+        }
+    }
+
+    /// The absolute coordinate of the end of this Entity's glyph's tail.
+    /// Only applies to NoteHeads, and only those that have tails.
+    /// TODO currently assumes only up.
+    fn tail_anchor(&self) -> Option<(f32, f32)> {
+        match self.glyph {
+            Glyph::NoteHead(position, duration) => {
+                match duration {
+
+                    Some(music::DurationGlyph { shape, dots }) => {
+                        let y = (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT;
+
+                        // TODO switch on direction.
+                        Some((self.x + HEAD_WIDTH, y - STEM_HEIGHT))
+                    }
+
+                    None => None,
+                }
+            }
+
+            _ => None,
+
         }
     }
 
     fn render(&self, svg: &mut svg::Drawing, x: f32, y: f32) {
+        // x in argument is the general offset, i.e. left margin.
+        // self.x is the offset within the stave.
+        let x = x + self.x;
+
         match self.glyph {
             Glyph::Clef(clef) => {
                 let yy = y + (LINES_IN_STAVE - clef.centre) as f32 * HEAD_HEIGHT;
@@ -264,60 +329,62 @@ impl Entity {
                             }
                         }
 
-                        // Stem
-                        match shape {
-                            music::DurationClass::Minim |
-                            music::DurationClass::Crotchet |
-                            music::DurationClass::Quaver |
-                            music::DurationClass::Semiquaver |
-                            music::DurationClass::Demisemiquaver => {
-                                svg.rect(
-                                    x + HEAD_WIDTH,
-                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT,
-                                    1.0,
-                                    STEM_HEIGHT,
-                                );
+                        if let Some((stem_x, stem_y)) = self.tail_anchor() {
+
+                            // Stem
+                            match shape {
+                                music::DurationClass::Minim |
+                                music::DurationClass::Crotchet |
+                                music::DurationClass::Quaver |
+                                music::DurationClass::Semiquaver |
+                                music::DurationClass::Demisemiquaver => {
+                                    svg.line(stem_x, stem_y + y, stem_x, yy);
+                                }
+
+                                _ => (),
                             }
 
-                            _ => (),
-                        }
 
-                        // Tail 1
-                        match shape {
-                            music::DurationClass::Quaver |
-                            music::DurationClass::Semiquaver |
-                            music::DurationClass::Demisemiquaver => {
-                                draw_tail(svg, x + HEAD_WIDTH, yy + HALF_HEAD_HEIGHT - STEM_HEIGHT);
+
+
+
+                            // Tail 1
+                            match shape {
+                                music::DurationClass::Quaver |
+                                music::DurationClass::Semiquaver |
+                                music::DurationClass::Demisemiquaver => {
+                                    draw_tail(svg, x + HEAD_WIDTH, stem_y + y + HALF_HEAD_HEIGHT);
+                                }
+
+                                _ => (),
                             }
 
-                            _ => (),
-                        }
+                            // Tail 2
+                            match shape {
+                                music::DurationClass::Semiquaver |
+                                music::DurationClass::Demisemiquaver => {
+                                    draw_tail(
+                                        svg,
+                                        x + HEAD_WIDTH,
+                                        stem_y + y + HALF_HEAD_HEIGHT + 8.0,
+                                    );
+                                }
 
-                        // Tail 2
-                        match shape {
-                            music::DurationClass::Semiquaver |
-                            music::DurationClass::Demisemiquaver => {
-                                draw_tail(
-                                    svg,
-                                    x + HEAD_WIDTH,
-                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT + 8.0,
-                                );
+                                _ => (),
                             }
 
-                            _ => (),
-                        }
+                            // Tail 3
+                            match shape {
+                                music::DurationClass::Demisemiquaver => {
+                                    draw_tail(
+                                        svg,
+                                        x + HEAD_WIDTH,
+                                        stem_y + y + HALF_HEAD_HEIGHT + 16.0,
+                                    );
+                                }
 
-                        // Tail 3
-                        match shape {
-                            music::DurationClass::Demisemiquaver => {
-                                draw_tail(
-                                    svg,
-                                    x + HEAD_WIDTH,
-                                    yy + HALF_HEAD_HEIGHT - STEM_HEIGHT + 16.0,
-                                );
+                                _ => (),
                             }
-
-                            _ => (),
                         }
 
                         for dot in 0..dots {
@@ -334,6 +401,9 @@ impl Entity {
                     // svg.rect_fill(x, yy - HEAD_HEIGHT / 2.0, HEAD_HEIGHT * 1.5, HEAD_HEIGHT);
                 }
             }
+
+            // As a glyph this doesn't render.
+            BeamBreak => (),
         }
     }
 }
@@ -342,6 +412,9 @@ impl Entity {
 struct Stave {
     entities: Vec<Entity>,
 }
+
+
+
 
 impl Stave {
     fn new() -> Stave {
@@ -355,99 +428,161 @@ impl Stave {
     }
 
     fn render(&self, svg: &mut svg::Drawing, y: f32) {
-        let natural_width: f32 = self.entities.iter().map(|entity| entity.width()).sum();
 
-        // Front matter is the stuff at the start of the line that should be typeset rigidly.
-        let front_matter: Vec<&Entity> = self.entities
+        // Split the line in to three regions:
+        // 1 - Front matter, including clef, time signature, key signature. This should be typeset
+        //     to the same scale on every line.
+        // 2 - Justifiable. The rest of the line that should be typeset proportionally.
+        // 3 - End matter. The final barline(s), should be right-aligned and typeset at the same
+        //     scale.
+
+        // As we have mutable copies around, using offsets is a lot neater than slices!
+        let mut justifiable_start_i = 0;
+        for i in 0..self.entities.len() {
+            justifiable_start_i = i;
+            if !self.entities[i].is_front_matter() {
+                break;
+            }
+        }
+
+        let mut justifiable_end_i = self.entities.len();
+        for i in (0..self.entities.len()).rev() {
+            if !self.entities[i].is_end_matter() {
+                break;
+            }
+            justifiable_end_i = i;
+        }
+
+        // Take a mutable copy of the entities. The x values will be shuffled around within the
+        // scope of this method but we don't want self.render() to be mutable in the broader scope.
+        // We're throwing away the mutated x values after the stave has been typeset.
+        let mut entities: Vec<Entity> = Vec::from_iter(self.entities.iter().cloned());
+
+        // Get the natural width of each section so we can work out the scale.
+        // The scale for the front and end matter is always 1.
+        // The scale for the justifiable section is whatever's left in the middle.
+        let front_matter_width: f32 = (&entities[..justifiable_start_i])
             .iter()
-            .take_while(|x| {
-                match x.glyph {
-                    // Normal front matter things.
-                    // TODO time signature, key signature.
-                    Glyph::Clef(_) => true,
-
-                    // Any kind of barline should be part of front matter.
-                    // Even weird things that shouldn't be there like close repeat.
-                    Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
-                    Glyph::CloseRepeat => true,
-
-                    // Notehead and friends are definitely out.
-                    // TODO no catch-all until all glyph types initially settled.
-                    Glyph::NoteHead(_, _) => false,
-                }
-            })
-            .collect();
-
-        // Not-front-matter is the rest of the line that should be laid out proportionally.
-        let not_front_matter: Vec<&Entity> =
-            self.entities.iter().skip(front_matter.len()).collect();
-
-        let mut end_matter: Vec<&Entity> = not_front_matter
+            .map(|x| x.width())
+            .sum();
+        let end_matter_width: f32 = (&entities[justifiable_end_i..])
             .iter()
-            .rev()
-            .map(|x| *x)
-            .take_while(|x| match x.glyph {
-                Glyph::SingleBar | Glyph::DoubleBar | Glyph::EndBar | Glyph::OpenRepeat |
-                Glyph::CloseRepeat => true,
-                _ => false,
-            })
-            .collect();
-        end_matter.reverse();
-
-        // And the remaining section is the bit that can be justified.
-        let justifiable = &not_front_matter[0..not_front_matter.len() - end_matter.len()];
-
-
-        // Running X offset for each glyph.
-        let mut x = 0.0;
-
-        let front_matter_width: f32 = front_matter.iter().map(|x| x.width()).sum();
-        let end_matter_width: f32 = end_matter.iter().map(|x| x.width()).sum();
-        let justifiable_width: f32 = justifiable.iter().map(|x| x.width()).sum();
+            .map(|x| x.width())
+            .sum();
+        let justifiable_width: f32 = (&entities[justifiable_start_i..justifiable_end_i])
+            .iter()
+            .map(|x| x.width())
+            .sum();
 
         // TODO prevent divide by zero
         let justifiable_scale = (STAVE_WIDTH - (front_matter_width + end_matter_width)) /
             justifiable_width;
+
         let justifiable_scale = f32::min(STAVE_WIDTH / justifiable_width, MINIMUM_STAVE_SCALE);
 
-        // Stave width doesn't always add up to the ideal STAVE_WIDTH,
-        // i.e. a short stave for a short line.
+        // Stave width doesn't always add up to the ideal STAVE_WIDTH, i.e. a short stave for a
+        // short line.
         let stave_width: f32 = (justifiable_width * justifiable_scale) + front_matter_width +
             end_matter_width;
 
-        // Always typeset front matter at the scale it wants.
-        for entity in front_matter.iter() {
-            entity.render(svg, x, y);
-            x += entity.width();
+        // Lay out all the entities' x values.
+        let mut x = 0.0;
+        for i in 0..justifiable_start_i {
+            entities[i].x = x;
+            x += entities[i].width() * 1.0;
         }
 
-        for entity in justifiable.iter() {
-            entity.render(svg, x, y);
-            x += entity.width() * justifiable_scale;
+        for i in justifiable_start_i..justifiable_end_i {
+            entities[i].x = x;
+            x += entities[i].width() * justifiable_scale;
         }
 
-        // Rewind from the end of the line to draw the fixed-width end-matter.
-        // This could be different to the current value of x.
+        // Need to wind back from the end so the right-hand edge aligns perfectly.
         x = stave_width - end_matter_width;
-        for entity in end_matter.iter() {
-            entity.render(svg, x, y);
-            x += entity.width();
+        for i in justifiable_end_i..entities.len() {
+            entities[i].x = x;
+            x += entities[i].width() * 1.0;
         }
 
+        // Now typeset.
+        for entity in entities.iter() {
+            // The entity has its own offset within the stave. The 0.0 here is page margin.
+            // TODO add page margin?
+            entity.render(svg, 0.0, y);
+        }
 
         for bar_i in 0..LINES_IN_STAVE {
             let yy = y + (LINES_IN_STAVE - bar_i) as f32 * HEAD_HEIGHT;
-
-            // DEBUG: Draw stave positions.
-            // svg.rect(x + bar_i as f32 * 5.0, yy, 2.0, 2.0);
-            // svg.text(x + bar_i as f32 * 5.0, yy, format!("{}", bar_i));
-
-
+            // Alternating lines and spaces.
             if bar_i % 2 == 0 {
                 svg.rect(0.0, yy, stave_width, 1.0);
-
             }
         }
+
+        // Now draw beams.
+
+        // Start (most recent qualifying glyph entity) of this beam group.
+        let mut beam_start_i = None;
+        // End (most recent qualifying glyph entity) of beam group.
+        let mut beam_end_i = None;
+
+        for i in 0..entities.len() {
+            let entity = &entities[i];
+
+            match entity.glyph {
+                Glyph::NoteHead(_, duration) => {
+                    match duration {
+                        Some(duration) => {
+                            eprintln!("A");
+                            if duration.shape.beams() > 0 {
+                                if beam_start_i == None {
+                                    beam_start_i = Some(i);
+                                } else {
+                                    beam_end_i = Some(i);
+                                }
+                            }
+                        }
+
+                        None => (),
+                    }
+
+                    eprintln!(
+                        "Notehead, at i {}, now: {:?} {:?}",
+                        i,
+                        beam_start_i,
+                        beam_end_i
+                    );
+                }
+
+                Glyph::BeamBreak => {
+                    eprintln!("BEAM BREAK {:?} - {:?}", beam_start_i, beam_end_i);
+                    if let Some(start_i) = beam_start_i {
+                        if let Some(end_i) = beam_end_i {
+
+
+
+                            // draw beam
+                            // TODO next step is get notehead to show line up or down, then a
+                            // method called end_of_stalk to return absolute position.
+                            svg.rect_debug(
+                                entities[start_i].x + HEAD_WIDTH,
+                                y,
+                                entities[end_i].x - entities[start_i].x,
+                                20.0,
+                            );
+
+                        }
+                    }
+
+                    beam_start_i = None;
+                    beam_end_i = None;
+                }
+
+                // Not interested in anything else for drawing beams.
+                _ => (),
+            }
+        }
+
 
     }
 }
@@ -524,6 +659,9 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
                         Glyph::NoteHead(position, glyph),
                     ));
                 }
+
+                // Beam break manifests as a zero-width entity. Just like in ABC.
+                l::T::BeamBreak => current_stave.entities.push(Entity::new(Glyph::BeamBreak)),
 
                 _ => {
                     // Ignore
