@@ -533,7 +533,6 @@ impl Stave {
                 Glyph::NoteHead(_, duration) => {
                     match duration {
                         Some(duration) => {
-                            eprintln!("A");
                             if duration.shape.beams() > 0 {
                                 if beam_start_i == None {
                                     beam_start_i = Some(i);
@@ -545,17 +544,9 @@ impl Stave {
 
                         None => (),
                     }
-
-                    eprintln!(
-                        "Notehead, at i {}, now: {:?} {:?}",
-                        i,
-                        beam_start_i,
-                        beam_end_i
-                    );
                 }
 
                 Glyph::BeamBreak => {
-                    eprintln!("BEAM BREAK {:?} - {:?}", beam_start_i, beam_end_i);
                     if let Some(start_i) = beam_start_i {
                         if let Some(end_i) = beam_end_i {
 

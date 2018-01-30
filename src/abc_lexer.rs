@@ -187,7 +187,6 @@ impl<'a> Context<'a> {
     }
 
     /// The content from the offset onwards.
-    #[test]
     fn rest(&self) -> &'a [char] {
         &self.c[self.i..]
     }
@@ -734,7 +733,6 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
 
 fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
     // Optional accidental.
-
     let (ctx, accidental) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&['^', '^']) {
         (ctx, Some(music::Accidental::DoubleSharp))
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['^', '^']) {
@@ -771,10 +769,20 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
     };
 
     // Optional octave modifier.
-    let (ctx, octave) = match ctx.peek_first() {
-        Some((ctx, ',')) => (ctx, octave - 1),
-        Some((ctx, '\'')) => (ctx, octave + 1),
-        _ => (ctx, 0),
+    let (ctx, octave) = if let (ctx, true) = ctx.starts_with_insensitive_eager(&[',', ',', ',']) {
+        (ctx, octave - 3)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[',', ',']) {
+        (ctx, octave - 2)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[',']) {
+        (ctx, octave - 1)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['\'', '\'', '\'']) {
+        (ctx, octave + 3)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['\'', '\'']) {
+        (ctx, octave + 2)
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['\'']) {
+        (ctx, octave + 1)
+    } else {
+        (ctx, octave)
     };
 
     // Duration has a few different representations, including zero characters.
@@ -2580,5 +2588,214 @@ K:    GFmaj
             2,
             "Offset is incremented for some prefix of some."
         );
+    }
+
+    #[test]
+    fn lex_note_test() {
+        // Read simple notes.
+        // TODO Lots missing from implementation still.
+
+        match lex_note(Context::new(&(string_to_vec(String::from("C"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 0,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("C,,,"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: -3,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        // Octave modifiers.
+        match lex_note(Context::new(&(string_to_vec(String::from("C,,"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: -2,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("C,"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: -1,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("C"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 0,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("c"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 1,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("c'"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 2,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("c''"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 3,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+        match lex_note(Context::new(&(string_to_vec(String::from("c'''"))))) {
+            LexResult::T(_, tokens) => {
+                assert_eq!(
+                    tokens,
+                    &[
+                        T::Note(music::Note(
+                            music::Pitch {
+                                pitch_class: music::PitchClass {
+                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                                    accidental: None,
+                                },
+                                octave: 4,
+                            },
+                            music::FractionalDuration(1, 1),
+                        )),
+                    ]
+                )
+            }
+
+            _ => assert!(false),
+        }
+
+
+
+
     }
 }
