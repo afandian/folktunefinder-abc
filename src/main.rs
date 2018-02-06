@@ -1,8 +1,9 @@
 use std::io::{self, Read};
 use std::env;
+extern crate tiny_http;
+extern crate regex;
 
 mod abc_lexer;
-mod application;
 mod archive;
 mod cluster;
 mod geometry;
@@ -15,6 +16,9 @@ mod viz;
 mod music;
 mod typeset;
 mod svg;
+mod storage;
+mod server;
+mod application;
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
@@ -30,7 +34,7 @@ fn get_stdin() -> String {
 
 
 /// Check an ABC file, from STDIN to STDOUT.
-fn main_check() {
+fn main_check(_application: &application::Application) {
     let chars = get_stdin().chars().collect::<Vec<char>>();
     let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
 
@@ -56,7 +60,7 @@ fn main_check() {
 
 
 /// Check an ABC file, from STDIN to STDOUT.
-fn main_typeset() {
+fn main_typeset(_application: &application::Application) {
     let chars = get_stdin().chars().collect::<Vec<char>>();
     let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
 
@@ -87,7 +91,7 @@ fn main_typeset() {
 }
 
 /// Visualise an ABC file. Whatever that means.
-fn main_viz() {
+fn main_viz(_application: &application::Application) {
     let chars = get_stdin().chars().collect::<Vec<char>>();
     let (num_errors, num_unshown, message) = abc_lexer::format_error_message_from_abc(&chars);
 
@@ -114,11 +118,24 @@ fn main_viz() {
     // println!("{}", viz);
 }
 
+fn main_scan(_application: &application::Application) {
+    eprintln!("Start scan...");
+    let mut tune_store = storage::TuneStore::new();
+    tune_store.scan();
+    eprintln!("Finished scan!");
+}
+
+fn main_server(application: &application::Application) {
+    eprintln!("Start server");
+    server::main(application);
+}
 
 
-fn main_unrecognised() {
+fn main_unrecognised(_application: &application::Application) {
     eprintln!(
         "Unrecognised command. Try:
+ - scan
+ - server
  - check
  - typeset
  - viz"
@@ -128,15 +145,19 @@ fn main_unrecognised() {
 fn main() {
     let mut args = env::args();
 
+    let application = application::Application::new();
+
     match args.nth(1) {
         Some(first) => {
             match first.as_ref() {
-                "check" => main_check(),
-                "typeset" => main_typeset(),
-                "viz" => main_viz(),
-                _ => main_unrecognised(),
+                "scan" => main_scan(&application),
+                "server" => main_server(&application),
+                "check" => main_check(&application),
+                "typeset" => main_typeset(&application),
+                "viz" => main_viz(&application),
+                _ => main_unrecognised(&application),
             }
         }
-        _ => main_unrecognised(),
+        _ => main_unrecognised(&application),
     }
 }

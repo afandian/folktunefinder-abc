@@ -111,6 +111,27 @@ With minims and crotchets:
 
 <img src="progress/2018-01-29 at 23.07.52.png">
 
+## Scan Tune Database
+
+A database of ABC tunes is stored in a cache. They are read from the filesystem in the directory specified by the `BASE` evironment variable. Files can be anywhere in the directory hierarchy, but should each have distinct numerical names, such as `1001.abc`. 
+
+To update the tune database:
+
+    BASE=/path/to/abcs cargo run scan
+
+The tunecache file will be stored at `/path/to/abcs/tunecache`. When new tunes are added, run re-scan. Only new files will be added. It is a simple concatenation of the files into one blob, with tune IDs and length data. Because reading hundreds of thousands of files is slow, database-oriented functions work from this cache.
+
+## Run server
+
+Serve up ABC, typeset SVG, and in future, perform search:
+
+    HTTP_BIND=0.0.0.0:3000 BASE=~/tune-db cargo run server
+
+## Config
+
+ - `BASE` - where are the ABC tunes? e.g. /tmp/tunes
+ - `HTTP_BIND` - http bind address and port for server? e.g. 0.0.0.0:8000
+
 ## Getting started
 
 Install Cargo.

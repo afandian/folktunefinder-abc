@@ -10,3 +10,7 @@ doc = false
 path = "src/main.rs"
 
 [dependencies]
+glob = "0.2.11"
+time = "0.1"
+regex = "0.2"
+tiny_http = "0.5"
