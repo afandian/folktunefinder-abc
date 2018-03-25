@@ -61,7 +61,7 @@ pub struct TuneCache {
     buffer: Vec<u8>,
 
     // tune id -> (offset, length)
-    index: HashMap<u32, (usize, usize)>,
+    pub index: HashMap<u32, (usize, usize)>,
 }
 
 impl TuneCache {
@@ -102,7 +102,7 @@ impl TuneCache {
     /// Read a TuneCache into memory, if there is one.
     fn load(&mut self) {
 
-        println!("Read cache...");
+        eprintln!("Read cache...");
 
         // If there's no file, return.
         let mut file = match File::open(&self.filename) {
@@ -115,11 +115,14 @@ impl TuneCache {
             "Can't read tune cache file.",
         );
 
+        eprintln!("Finish reading.");
         self.create_index();
+
+        eprintln!("Finish loading.");
     }
 
     fn save(&self) {
-        println!("Write tune cache to {:?}", &self.filename);
+        eprintln!("Write tune cache to {:?}", &self.filename);
 
         write_file(&self.filename, &self.buffer);
     }
@@ -131,9 +134,9 @@ impl TuneCache {
     /// Insert the tune data into the cache, if we don't have it, else skip.
     fn ensure(&mut self, tune_id: u32, data: &Vec<u8>) {
         if self.has_tune(tune_id) {
-            // println!("Cache skip {}", &tune_id);
+            // eprintln!("Cache skip {}", &tune_id);
         } else {
-            // println!("Cache add {}", &tune_id);
+            // eprintln!("Cache add {}", &tune_id);
 
             // Previous length of the buffer is the new starting index for this tune.
             let offset = self.buffer.len();
@@ -230,16 +233,16 @@ impl TuneStore {
                         }
 
                     } else {
-                        println!("Failed to get tune id for path: {}", filepath.display());
+                        eprintln!("Failed to get tune id for path: {}", filepath.display());
                     }
                 }
-                Err(e) => println!("Error {:?}", e),
+                Err(e) => eprintln!("Error {:?}", e),
             }
 
             num_scanned += 1;
 
             if num_scanned % 10000 == 0 {
-                println!("Scanned {} tunes, indexed {}", num_scanned, num_indexed);
+                eprintln!("Scanned {} tunes, indexed {}", num_scanned, num_indexed);
             }
         }
 

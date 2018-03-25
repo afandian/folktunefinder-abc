@@ -228,7 +228,7 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
             }
             &l::T::BeamBreak => (),
 
-            _ => println!("TODO! Unhandled")
+            _ => eprintln!("TODO! Unhandled")
         }
 
 

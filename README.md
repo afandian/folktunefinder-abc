@@ -132,6 +132,13 @@ Serve up ABC, typeset SVG, and in future, perform search:
  - `BASE` - where are the ABC tunes? e.g. /tmp/tunes
  - `HTTP_BIND` - http bind address and port for server? e.g. 0.0.0.0:8000
 
+## Performance
+
+On a random Macbook air, full scan of 200,000 tunes and error reporting:
+
+ - DEBUG: 3m5.416s
+ - RELEASE: 0m47.434s = ~4x speedup
+
 ## Getting started
 
 Install Cargo.

@@ -15,6 +15,7 @@ mod tune_ast_three;
 mod viz;
 mod music;
 mod typeset;
+// mod typeset2;
 mod svg;
 mod storage;
 mod server;
@@ -81,13 +82,12 @@ fn main_typeset(_application: &application::Application) {
     }
 
     let ast = tune_ast_three::read_from_lexer(abc_lexer::Lexer::new(&chars));
-    eprintln!("AST: {:#?}", ast);
 
     let typeset_page = typeset::typeset_from_ast(ast);
 
     let svg = typeset::render_page(typeset_page);
 
-    println!("{}", svg);
+    // println!("{}", svg);
 }
 
 /// Visualise an ABC file. Whatever that means.
@@ -118,24 +118,28 @@ fn main_viz(_application: &application::Application) {
     // println!("{}", viz);
 }
 
-fn main_scan(_application: &application::Application) {
+fn main_scan(application: &mut application::Application) {
     eprintln!("Start scan...");
-    let mut tune_store = storage::TuneStore::new();
-    tune_store.scan();
+    application.ensure_load_tunes();
+    match application.tune_store {
+        Some(ref mut tune_store) => tune_store.scan(),
+        _ => (),
+    }
     eprintln!("Finished scan!");
 }
 
-fn main_server(application: &application::Application) {
+fn main_server(application: &mut application::Application) {
     eprintln!("Start server");
+    application.ensure_load_tunes();
+
     server::main(application);
 }
-
 
 fn main_unrecognised(_application: &application::Application) {
     eprintln!(
         "Unrecognised command. Try:
- - scan
- - server
+ - db_scan
+ - db_server
  - check
  - typeset
  - viz"
@@ -145,13 +149,13 @@ fn main_unrecognised(_application: &application::Application) {
 fn main() {
     let mut args = env::args();
 
-    let application = application::Application::new();
+    let mut application = application::Application::new();
 
     match args.nth(1) {
         Some(first) => {
             match first.as_ref() {
-                "scan" => main_scan(&application),
-                "server" => main_server(&application),
+                "db_scan" => main_scan(&mut application),
+                "db_server" => main_server(&mut application),
                 "check" => main_check(&application),
                 "typeset" => main_typeset(&application),
                 "viz" => main_viz(&application),
