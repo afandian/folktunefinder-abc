@@ -20,6 +20,7 @@ mod svg;
 mod storage;
 mod server;
 mod application;
+mod relations;
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
