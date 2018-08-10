@@ -34,9 +34,8 @@ impl Drawing {
         write!(
             &mut buf,
             "<svg version='1.1' baseProfile='full' width='{}' height='{}' \
-                          xmlns='http://www.w3.org/2000/svg'>",
-            self.width,
-            self.height
+             xmlns='http://www.w3.org/2000/svg'>",
+            self.width, self.height
         ).unwrap();
 
         for entity in self.entities.iter() {
@@ -45,41 +44,33 @@ impl Drawing {
                     write!(
                         &mut buf,
                         "<rect x='{}' y='{}' width='{}' height='{}' \
-                                      style='fill:none;stroke:black;stroke-width:2' />",
-                        x,
-                        y,
-                        w,
-                        h
-                    ).unwrap();
+                         style='fill:none;stroke:black;stroke-width:2' />",
+                        x, y, w, h
+                    ).expect("Can't write");
                 }
 
                 &Entity::FillRect(x, y, w, h) => {
                     write!(
                         &mut buf,
                         "<rect x='{}' y='{}' width='{}' height='{}' \
-                                      style='fill:solid black;stroke:black;stroke-width:2' />",
-                        x,
-                        y,
-                        w,
-                        h
-                    ).unwrap();
+                         style='fill:solid black;stroke:black;stroke-width:2' />",
+                        x, y, w, h
+                    ).expect("Can't write");
                 }
 
                 &Entity::DebugRect(x, y, w, h) => {
                     write!(
                         &mut buf,
                         "<rect x='{}' y='{}' width='{}' height='{}' \
-                                      style='fill:none;stroke:red;stroke-width:2' />",
-                        x,
-                        y,
-                        w,
-                        h
-                    ).unwrap();
+                         style='fill:none;stroke:red;stroke-width:2' />",
+                        x, y, w, h
+                    ).expect("Can't write");
                 }
 
                 &Entity::Text(x, y, ref text) => {
                     // TOOD ESCAPE
-                    write!(&mut buf, "<text x='{}' y='{}' >{}</text>", x, y, text).unwrap();
+                    write!(&mut buf, "<text x='{}' y='{}' >{}</text>", x, y, text)
+                        .expect("Can't write");
                 }
 
                 &Entity::LinePath(x, y, ref path) => {
@@ -87,10 +78,8 @@ impl Drawing {
                         &mut buf,
                         "<path d='{}' stroke-width='2' stroke='black'
                          fill='none' transform='translate({} {})' />",
-                        path,
-                        x,
-                        y
-                    );
+                        path, x, y
+                    ).expect("Can't write");
                 }
 
                 &Entity::Circle(x, y, radius, fill) => {
@@ -102,7 +91,7 @@ impl Drawing {
                         y,
                         radius,
                         if fill { "black" } else { "none" }
-                    );
+                    ).expect("Can't write");
                 }
 
                 &Entity::Line(x, y, xx, yy) => {
@@ -110,16 +99,13 @@ impl Drawing {
                         &mut buf,
                         "<line x1='{}' y1='{}' x2='{}' y2='{}' stroke-width='2'
                          stroke='black' />",
-                        x,
-                        y,
-                        xx,
-                        yy
-                    );
+                        x, y, xx, yy
+                    ).expect("Can't write");
                 }
             }
         }
 
-        write!(&mut buf, "</svg>").unwrap();
+        write!(&mut buf, "</svg>").expect("Can't write");
 
         buf
     }
@@ -168,13 +154,11 @@ impl Drawing {
         self.entities.push(Entity::LinePath(x, y, path));
     }
 
-
     pub fn line(&mut self, x: f32, y: f32, xx: f32, yy: f32) {
         self.ensure(x, y);
         self.ensure(xx, yy);
         self.entities.push(Entity::Line(x, y, xx, yy));
     }
-
 
     pub fn circle(&mut self, x: f32, y: f32, radius: f32, fill: bool) {
         self.ensure(x - radius, y - radius);

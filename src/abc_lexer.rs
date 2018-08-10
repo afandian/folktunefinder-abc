@@ -1,3 +1,4 @@
+use music;
 ///! ABC Lexer
 ///! Transform strings of ABC into a sequence of lexed tokens.
 ///! This accepts a String and returns newly allocated strings that have an independent lifetime to
@@ -12,9 +13,7 @@
 ///!  They are called speculatively, and simply return an option.
 ///! Context is a lightweight immutable pointer into a char slice. There's heavy (hopefully
 ///! sensible) use of shadowing / rebinding of 'ctx' variables, so check the scope!
-
 use std::fmt;
-use music;
 
 /// ABC Token.
 /// Shortened as it's used a lot.
@@ -55,8 +54,6 @@ pub enum T {
     Note(music::Note),
 }
 
-
-
 /// Which bit of the tune are we in?
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 enum TuneSection {
@@ -83,7 +80,6 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     fn new(c: &'a [char]) -> Context<'a> {
-
         let l = c.len();
 
         Context {
@@ -148,7 +144,6 @@ impl<'a> Context<'a> {
         // Recursive version didn't TCO.
         loop {
             match context.first() {
-
                 Some((ctx, ' ')) => context = ctx,
 
                 // Non-matching character.
@@ -166,7 +161,6 @@ impl<'a> Context<'a> {
             (*self, false)
         } else {
             for i in 0..len {
-
                 // If there's no match return original context's offset.
                 if self.c[self.i + i].to_uppercase().next() != prefix[i].to_uppercase().next() {
                     return (*self, false);
@@ -200,15 +194,12 @@ impl<'a> fmt::Debug for Context<'a> {
     }
 }
 
-
-
 /// Read until delmiter character.
 /// Return that slice plus the content.
 fn read_until<'a>(
     ctx: Context<'a>,
     delimiter: char,
 ) -> Result<(Context<'a>, &'a [char]), Context<'a>> {
-
     if let Some(offset) = ctx.c[ctx.i..].iter().position(|c| *c == delimiter) {
         // Skip 1 for the delimiter character.
         Ok((ctx.skip(offset + 1), &ctx.c[ctx.i..ctx.i + offset]))
@@ -237,7 +228,6 @@ fn read_number<'a>(
     let mut length = 0;
 
     for i in ctx.i..ctx.l {
-
         // Catch an over-long number before it overflows u32 bits.
         // If it's too long we'll discard the number, but want to leave the context.i at the end
         // of the digits. It's less fiddly to keep resetting the value for the remainder of the bad
@@ -295,7 +285,6 @@ fn read_number<'a>(
     }
 
     if too_long {
-
         // Set the context to the end of the number, but report error from the start of it.
         let start_of_number = ctx.i;
         return Err((
@@ -334,9 +323,10 @@ fn lex_note_length<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                                     // Skip one character for the delimiter.
                                     LexResult::t(
                                         ctx.skip(1),
-                                        T::DefaultNoteLength(
-                                            music::FractionalDuration(numerator, denomenator),
-                                        ),
+                                        T::DefaultNoteLength(music::FractionalDuration(
+                                            numerator,
+                                            denomenator,
+                                        )),
                                     )
                                 }
                             }
@@ -350,7 +340,6 @@ fn lex_note_length<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         }
     }
 }
-
 
 /// Lex a metre declaration, e.g. "2/4" or "C|".
 fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
@@ -368,7 +357,6 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         // Although this context is discareded for parsing, it is used to return errors,
         // as it enables the lexer to continue at the next token.
         Ok((whole_line_ctx, content)) => {
-
             if content == &['C'] {
                 LexResult::t(ctx, T::Metre(music::Metre(4, 4)))
             } else if content == &['C', '|'] {
@@ -398,11 +386,8 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
                                 LexResult::Error(ctx, ctx.i, LexError::ExpectedSlashInMetre)
                             }
                         }
-
                     }
-
                 }
-
             }
         }
     }
@@ -432,14 +417,12 @@ fn read_key_note<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::PitchClass
         Some(_) => {
             if let (ctx, true) = ctx.starts_with_insensitive_eager(&['f', 'l', 'a', 't']) {
                 (ctx, Some(music::Accidental::Flat))
-            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
-                &['s', 'h', 'a', 'r', 'p'],
-            )
+            } else if let (ctx, true) =
+                ctx.starts_with_insensitive_eager(&['s', 'h', 'a', 'r', 'p'])
             {
                 (ctx, Some(music::Accidental::Sharp))
-            } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
-                &['n', 'a', 't', 'u', 'r', 'a', 'l'],
-            )
+            } else if let (ctx, true) =
+                ctx.starts_with_insensitive_eager(&['n', 'a', 't', 'u', 'r', 'a', 'l'])
             {
                 (ctx, Some(music::Accidental::Natural))
             } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['f', 'f']) {
@@ -503,30 +486,24 @@ pub fn read_mode<'a>(ctx: Context<'a>) -> Option<(Context<'a>, music::Mode)> {
         Some((ctx, music::Mode::Lydian))
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['i', 'o', 'n', 'i', 'a', 'n']) {
         Some((ctx, music::Mode::Ionian))
-    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
-        &['m', 'i', 'x', 'o', 'l', 'y', 'd', 'i', 'a', 'n'],
-    )
+    } else if let (ctx, true) =
+        ctx.starts_with_insensitive_eager(&['m', 'i', 'x', 'o', 'l', 'y', 'd', 'i', 'a', 'n'])
     {
         Some((ctx, music::Mode::Mixolydian))
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['d', 'o', 'r', 'i', 'a', 'n']) {
         Some((ctx, music::Mode::Dorian))
-    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
-        &['a', 'e', 'o', 'l', 'i', 'a', 'n'],
-    )
+    } else if let (ctx, true) =
+        ctx.starts_with_insensitive_eager(&['a', 'e', 'o', 'l', 'i', 'a', 'n'])
     {
         Some((ctx, music::Mode::Aeolian))
-    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(
-        &['p', 'h', 'r', 'y', 'g', 'i', 'a', 'n'],
-    )
+    } else if let (ctx, true) =
+        ctx.starts_with_insensitive_eager(&['p', 'h', 'r', 'y', 'g', 'i', 'a', 'n'])
     {
         Some((ctx, music::Mode::Phrygian))
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'a', 'j']) {
         Some((ctx, music::Mode::Major))
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['m', 'i', 'n']) {
         Some((ctx, music::Mode::Minor))
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'o', 'c']) {
         Some((ctx, music::Mode::Locrian))
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['l', 'y', 'd']) {
@@ -566,8 +543,6 @@ fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::Fractional
                 // No number after the slash, default to 1.
                 Err((ctx, _, _)) => (ctx, None, true),
             }
-
-
         } else {
             // No slash, so don't expect to read a denomenator.
             (ctx, None, false)
@@ -601,7 +576,6 @@ fn read_fractional_duration<'a>(ctx: Context<'a>) -> (Context, music::Fractional
     (ctx, music::FractionalDuration(numerator, denomenator))
 }
 
-
 fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     match read_until(ctx, delimiter) {
         Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::KeySignature)),
@@ -610,7 +584,6 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         // as it enables the lexer to continue at the next token.
         Ok((whole_line_ctx, _)) => {
             if let Some((ctx, key_note)) = read_key_note(ctx) {
-
                 // TODO: Assuming empty means 'major'. Is this correct for at the lexer?
                 // Or maybe the AST-level representation should handle the behaviour.
                 let (_, mode) = read_mode(ctx).unwrap_or((ctx, music::Mode::Major));
@@ -628,10 +601,8 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     }
 }
 
-
 /// Read an n-time-repeat, e.g. "[2" or "2" immediately following a barline.
 fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
-
     let ctx = ctx.skip_optional_prefix(&['[']);
 
     match read_number(ctx, NumberRole::NTimeBar) {
@@ -643,7 +614,6 @@ fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
 /// Lex a barline, when it is expected.
 /// TODO all tests for this!
 fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
-
     // Every barline includes some kind of beam break.
 
     if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ':']) {
@@ -651,68 +621,54 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|', ':']) {
         LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', '|']) {
-        let (ctx, n_time) = read_n_time(ctx);
+        let (ctx, _) = read_n_time(ctx);
 
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => {
-                LexResult::tttt(
-                    ctx,
-                    T::BeamBreak,
-                    T::CloseRepeat,
-                    T::DoubleBar,
-                    T::NTimeBar(n_time),
-                )
-            }
-            (ctx, Nil) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::DoubleBar),
+            (ctx, Some(n_time)) => LexResult::tttt(
+                ctx,
+                T::BeamBreak,
+                T::CloseRepeat,
+                T::DoubleBar,
+                T::NTimeBar(n_time),
+            ),
+            (ctx, None) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::DoubleBar),
         }
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|', ']']) {
-
         match read_n_time(ctx) {
             (ctx, Some(n_time)) => {
                 LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::NTimeBar(n_time))
             }
-            (ctx, Nil) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::EndBar),
+            (ctx, None) => LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::EndBar),
         }
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', '|']) {
-
         match read_n_time(ctx) {
             (ctx, Some(n_time)) => {
                 LexResult::ttt(ctx, T::BeamBreak, T::CloseRepeat, T::NTimeBar(n_time))
             }
-            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::CloseRepeat),
+            (ctx, None) => LexResult::tt(ctx, T::BeamBreak, T::CloseRepeat),
         }
-
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|', ':']) {
         LexResult::ttt(ctx, T::BeamBreak, T::DoubleBar, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
         LexResult::tt(ctx, T::BeamBreak, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', '|']) {
-        let (ctx, n_time) = read_n_time(ctx);
-
+        let (ctx, _) = read_n_time(ctx);
 
         match read_n_time(ctx) {
             (ctx, Some(n_time)) => {
                 LexResult::ttt(ctx, T::BeamBreak, T::DoubleBar, T::NTimeBar(n_time))
             }
-            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::DoubleBar),
+            (ctx, None) => LexResult::tt(ctx, T::BeamBreak, T::DoubleBar),
         }
-
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ']']) {
-        let (ctx, n_time) = read_n_time(ctx);
-
+        let (ctx, _) = read_n_time(ctx);
 
         match read_n_time(ctx) {
             (ctx, Some(n_time)) => {
                 LexResult::ttt(ctx, T::BeamBreak, T::EndBar, T::NTimeBar(n_time))
             }
-            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::EndBar),
+            (ctx, None) => LexResult::tt(ctx, T::BeamBreak, T::EndBar),
         }
-
-
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['|', ':']) {
         LexResult::tt(ctx, T::BeamBreak, T::OpenRepeat)
     } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&[':', ':']) {
@@ -724,7 +680,7 @@ fn lex_barline<'a>(ctx: Context<'a>) -> LexResult {
             (ctx, Some(n_time)) => {
                 LexResult::ttt(ctx, T::BeamBreak, T::SingleBar, T::NTimeBar(n_time))
             }
-            (ctx, Nil) => LexResult::tt(ctx, T::BeamBreak, T::SingleBar),
+            (ctx, None) => LexResult::tt(ctx, T::BeamBreak, T::SingleBar),
         }
     } else {
         LexResult::Error(ctx, ctx.i, LexError::UnrecognisedBarline)
@@ -806,8 +762,6 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
         LexResult::Error(ctx, ctx.i, LexError::UnrecognisedNote)
     }
 }
-
-
 
 // The activity we were undertaking at the time when something happened.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -950,67 +904,51 @@ impl LexError {
                         &"Z: Transcription note".to_string(),
                     ],
                 );
-
             }
             &LexError::ExpectedNumber(ref number_role) => {
                 buf.push_str("I expected to find a number here.\n");
                 match number_role {
-                    &NumberRole::UpperTimeSignature => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected the first / upper part of a time signature.".to_string(),
-                        )
-                    }
-                    &NumberRole::LowerTimeSignature => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected the second / lower part of a time signature.".to_string(),
-                        )
-                    }
+                    &NumberRole::UpperTimeSignature => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected the first / upper part of a time signature.".to_string(),
+                    ),
+                    &NumberRole::LowerTimeSignature => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected the second / lower part of a time signature.".to_string(),
+                    ),
 
                     // NoteDurationNumerator and NoteDurationDenomenator shouldn't ever actually
                     // occur as they are read in an optional context, but if they do, be polite.
-                    &NumberRole::NoteDurationNumerator => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected to find a number for a note length.".to_string(),
-                        )
-                    }
+                    &NumberRole::NoteDurationNumerator => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected to find a number for a note length.".to_string(),
+                    ),
 
-                    &NumberRole::NoteDurationDenomenator => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected to find a number for a note length.".to_string(),
-                        )
-                    }
-                    &NumberRole::UpperDefaultNoteLength => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected to find the first / upper part of a default note length."
-                                .to_string(),
-                        )
-                    }
-                    &NumberRole::LowerDefaultNoteLength => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected to find the second / lower part of a default note length."
-                                .to_string(),
-                        )
-                    }
-                    &NumberRole::NTimeBar => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I expected to find a n-time repeat bar.".to_string(),
-                        )
-                    }
-
+                    &NumberRole::NoteDurationDenomenator => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected to find a number for a note length.".to_string(),
+                    ),
+                    &NumberRole::UpperDefaultNoteLength => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected to find the first / upper part of a default note length."
+                            .to_string(),
+                    ),
+                    &NumberRole::LowerDefaultNoteLength => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected to find the second / lower part of a default note length."
+                            .to_string(),
+                    ),
+                    &NumberRole::NTimeBar => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I expected to find a n-time repeat bar.".to_string(),
+                    ),
                 }
             }
             &LexError::ExpectedSlashInMetre => {
@@ -1022,34 +960,26 @@ impl LexError {
             &LexError::PrematureEnd(ref during) => {
                 buf.push_str("I've got to the end of the ABC input before I'm ready.\n");
                 match during {
-                    &During::Metre => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I was in the middle of reading a time signature".to_string(),
-                        )
-                    }
-                    &During::Header => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I was in the middle of reading a header field.".to_string(),
-                        )
-                    }
-                    &During::KeySignature => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I was in the middle of reading a key signature.".to_string(),
-                        )
-                    }
-                    &During::DefaultNoteLenth => {
-                        indent_and_append_line(
-                            indent,
-                            buf,
-                            &"I was in the middle of reading a default note length.".to_string(),
-                        )
-                    }
+                    &During::Metre => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I was in the middle of reading a time signature".to_string(),
+                    ),
+                    &During::Header => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I was in the middle of reading a header field.".to_string(),
+                    ),
+                    &During::KeySignature => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I was in the middle of reading a key signature.".to_string(),
+                    ),
+                    &During::DefaultNoteLenth => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I was in the middle of reading a default note length.".to_string(),
+                    ),
                 }
             }
             &LexError::UnexpectedBodyChar(chr) => {
@@ -1063,7 +993,7 @@ impl LexError {
             &LexError::UnimplementedError(ident) => {
                 buf.push_str(
                     "I'm confused, sorry. Please email joe@afandian.com with your ABC \
-                              and quote number '",
+                     and quote number '",
                 );
                 buf.push_str(&ident.to_string());
                 buf.push_str("' and I'll see if I can fix it.");
@@ -1074,9 +1004,7 @@ impl LexError {
                 );
             }
             &LexError::ExpectedSlashInNoteLength => {
-                buf.push_str(
-                    "I expected to find a slash character in a default note length.",
-                );
+                buf.push_str("I expected to find a slash character in a default note length.");
             }
             &LexError::UnrecognisedBarline => {
                 buf.push_str("I couldn't understand this bar line.");
@@ -1084,7 +1012,6 @@ impl LexError {
             &LexError::UnrecognisedNote => {
                 buf.push_str("I didn't understand how to read this note.");
             }
-
         }
     }
 }
@@ -1131,7 +1058,6 @@ impl<'a> LexResult<'a> {
     }
 }
 
-
 /// Try to read a single T and return a new context.
 /// Note that there's a lot of aliasing of ctx in nested matches.
 fn read(ctx: Context) -> LexResult {
@@ -1140,20 +1066,18 @@ fn read(ctx: Context) -> LexResult {
         Some((ctx, first_char)) => {
             match ctx.tune_section {
                 TuneSection::Header => {
-
                     // We know that in this branch we always want to match on the first char, so can
                     // safely skip now.
                     let ctx = ctx.skip(1);
 
                     match first_char {
                         // Text headers.
-                        'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S' |
-                        'T' | 'W' | 'X' | 'Z' => {
+                        'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S'
+                        | 'T' | 'W' | 'X' | 'Z' => {
                             match ctx.first() {
                                 Some((ctx, ':')) => {
                                     match read_until(ctx, '\n') {
                                         Ok((ctx, chars)) => {
-
                                             let value: String = chars.iter().collect();
 
                                             // Strip whitespace including leading space and trailing
@@ -1179,22 +1103,18 @@ fn read(ctx: Context) -> LexResult {
 
                                                 // This can only happen if the above cases get out
                                                 // of sync.
-                                                _ => {
-                                                    LexResult::Error(
-                                                        ctx,
-                                                        ctx.i,
-                                                        LexError::ExpectedFieldType(first_char),
-                                                    )
-                                                }
+                                                _ => LexResult::Error(
+                                                    ctx,
+                                                    ctx.i,
+                                                    LexError::ExpectedFieldType(first_char),
+                                                ),
                                             }
                                         }
-                                        Err(ctx) => {
-                                            LexResult::Error(
-                                                ctx,
-                                                ctx.i,
-                                                LexError::ExpectedDelimiter('\n'),
-                                            )
-                                        }
+                                        Err(ctx) => LexResult::Error(
+                                            ctx,
+                                            ctx.i,
+                                            LexError::ExpectedDelimiter('\n'),
+                                        ),
                                     }
                                 }
 
@@ -1204,13 +1124,11 @@ fn read(ctx: Context) -> LexResult {
                                 }
 
                                 // Unexpected end of file.
-                                None => {
-                                    LexResult::Error(
-                                        ctx,
-                                        ctx.i,
-                                        LexError::PrematureEnd(During::Header),
-                                    )
-                                }
+                                None => LexResult::Error(
+                                    ctx,
+                                    ctx.i,
+                                    LexError::PrematureEnd(During::Header),
+                                ),
                             }
                         }
 
@@ -1219,14 +1137,11 @@ fn read(ctx: Context) -> LexResult {
                         'K' | 'L' | 'M' | 'P' | 'Q' => {
                             match ctx.first() {
                                 Some((ctx, ':')) => {
-
                                     // Skip leading whitespace within the header.
                                     let ctx = ctx.skip_whitespace();
                                     match first_char {
-
                                         // Key signature.
                                         'K' => {
-
                                             // K signals a switch to the body section, even if it
                                             // failed to parse.
                                             let ctx = ctx.in_body();
@@ -1275,13 +1190,11 @@ fn read(ctx: Context) -> LexResult {
                                 }
 
                                 // Unexpected end of file.
-                                None => {
-                                    LexResult::Error(
-                                        ctx,
-                                        ctx.i,
-                                        LexError::PrematureEnd(During::Header),
-                                    )
-                                }
+                                None => LexResult::Error(
+                                    ctx,
+                                    ctx.i,
+                                    LexError::PrematureEnd(During::Header),
+                                ),
                             }
                         }
 
@@ -1297,8 +1210,8 @@ fn read(ctx: Context) -> LexResult {
 
                         '|' | ':' => lex_barline(ctx),
 
-                        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'A' | 'B' | 'C' | 'D' | 'E' |
-                        'F' | 'G' | '^' | '_' | '=' => lex_note(ctx),
+                        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'A' | 'B' | 'C' | 'D' | 'E'
+                        | 'F' | 'G' | '^' | '_' | '=' => lex_note(ctx),
 
                         // TODO all tune body entities.
                         _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
@@ -1360,12 +1273,11 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<LexResult<'a>> {
         // If we got an error last time we may want to skip over the input to try and resume.
         let skip_amount = match self.error {
-
             // The errors returned by Metre recover by themselves, so no need to skip.
-            Some(LexError::NumberTooLong(NumberRole::UpperTimeSignature)) |
-            Some(LexError::NumberTooLong(NumberRole::LowerTimeSignature)) |
-            Some(LexError::ExpectedNumber(NumberRole::LowerTimeSignature)) |
-            Some(LexError::ExpectedNumber(NumberRole::UpperTimeSignature)) => 0,
+            Some(LexError::NumberTooLong(NumberRole::UpperTimeSignature))
+            | Some(LexError::NumberTooLong(NumberRole::LowerTimeSignature))
+            | Some(LexError::ExpectedNumber(NumberRole::LowerTimeSignature))
+            | Some(LexError::ExpectedNumber(NumberRole::UpperTimeSignature)) => 0,
 
             // If there was an error that we haven't deliberately discounted,
             // increment by one to try and recover.
@@ -1435,7 +1347,6 @@ pub fn format_error_message<'a>(
     buf.push_str(ABC_PREFIX);
     let mut first = true;
     for i in 0..input.len() {
-
         // Deal both with empty strings and non-empty ones.
         let last_char = i + 1 >= length;
 
@@ -1446,7 +1357,6 @@ pub fn format_error_message<'a>(
         // If it's a newline.
         // If we get a \r\n\ sequence, the \n will still be the last character.
         if c == '\n' || last_char {
-
             // Start of line is the end of the previous one, plus its newline.
             // Bit of a hack for the starting line, which isn't preceeded by a newline.
             start_of_line = if first {
@@ -1487,7 +1397,6 @@ pub fn format_error_message<'a>(
                         None => error_index[index_i] = Some(error.clone()),
                         Some(_) => num_unshown += 1,
                     }
-
                 }
             }
 
@@ -1505,7 +1414,6 @@ pub fn format_error_message<'a>(
                         indent += ERR_PREFIX.len();
 
                         for error_char in error_index.iter() {
-
                             match *error_char {
                                 None => {
                                     buf.push(' ');
@@ -1520,7 +1428,6 @@ pub fn format_error_message<'a>(
                                         } else {
                                             '┃'
                                         }
-
                                     });
 
                                     if error_char == error_line {
@@ -1539,21 +1446,16 @@ pub fn format_error_message<'a>(
                         buf.push('\n');
                         first_line_of_error = false;
                     }
-
                 }
-
             }
-
 
             // Indent the next line.
             buf.push_str(ABC_PREFIX);
         }
-
     }
 
     (all_errors.len(), num_unshown, buf)
 }
-
 
 /// Parse an ABC input, return nicely formatted error message and number of lex errors.
 pub fn format_error_message_from_abc(input: &[char]) -> (usize, u32, String) {
@@ -1583,7 +1485,6 @@ K:EDor
 B2EG2EF3|B2EG2E FED|B2EG2EF3|B2dd2B AFD:|
 B2=ce2fg3|B2d g2e dBA|B2=ce2fg2a|b2ag2e dBA:|
 B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
-
 
     #[test]
     fn context_has() {
@@ -1621,7 +1522,6 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
 
         assert_eq!(empty_context.take(5), None, "Empty input can't take any.");
 
-
         //
         // Non-empty
         //
@@ -1652,10 +1552,7 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
 
         assert_eq!(
             some_context.take(5),
-            Some((
-                some_context.skip(5),
-                &(vec!['X', ':', '2', '4', '\n'])[..],
-            )),
+            Some((some_context.skip(5), &(vec!['X', ':', '2', '4', '\n'])[..])),
             "Empty input can't take any."
         );
     }
@@ -1684,7 +1581,6 @@ B2BB2AG2A|B3 BAB dBA|~B3 B2AG2A|B2dg2e dBA:|";
             "skip_whitespace() no change when no whitespace"
         );
     }
-
 
     #[test]
     fn lexer_can_skip_err() {
@@ -1785,7 +1681,7 @@ K:    GFmaj
                         diatonic_pitch_class: music::DiatonicPitchClass::G,
                         accidental: Some(music::Accidental::Flat),
                     },
-                    music::Mode::Major
+                    music::Mode::Major,
                 ),
             ]
         );
@@ -1806,57 +1702,46 @@ K:    GFmaj
     fn header_errs() {
         // Unrecognised start of header.
         match read(Context::new(&(string_to_vec("Y:x\n".to_string())))) {
-            LexResult::Error(_, _, LexError::UnexpectedHeaderLine) => {
-                assert!(
-                    true,
-                    "Should get UnexpectedHeaderLine when an unrecognised header line started"
-                )
-            }
+            LexResult::Error(_, _, LexError::UnexpectedHeaderLine) => assert!(
+                true,
+                "Should get UnexpectedHeaderLine when an unrecognised header line started"
+            ),
             _ => assert!(false),
         }
 
         // Good looking header but unrecognised field name.
         match read(Context::new(&(string_to_vec("Y:What\n".to_string())))) {
-            LexResult::Error(_, _, LexError::UnexpectedHeaderLine) => {
-                assert!(
-                    true,
-                    "Should get UnexpectedHeaderLine when an unrecognised field type"
-                )
-            }
+            LexResult::Error(_, _, LexError::UnexpectedHeaderLine) => assert!(
+                true,
+                "Should get UnexpectedHeaderLine when an unrecognised field type"
+            ),
             _ => assert!(false),
         }
 
         // No delimiter (i.e. newline) for field.
         match read(Context::new(&(string_to_vec("T:NeverEnding".to_string())))) {
-            LexResult::Error(_, _, LexError::ExpectedDelimiter('\n')) => {
-                assert!(
-                    true,
-                    "Should get ExpectedDelimiter there isn't a newline available"
-                )
-            }
+            LexResult::Error(_, _, LexError::ExpectedDelimiter('\n')) => assert!(
+                true,
+                "Should get ExpectedDelimiter there isn't a newline available"
+            ),
             _ => assert!(false),
         }
 
         // Header without colon.
         match read(Context::new(&(string_to_vec("TNoColon".to_string())))) {
-            LexResult::Error(_, _, LexError::ExpectedColon) => {
-                assert!(
-                    true,
-                    "Should get ExpectedColon there isn't a newline available"
-                )
-            }
+            LexResult::Error(_, _, LexError::ExpectedColon) => assert!(
+                true,
+                "Should get ExpectedColon there isn't a newline available"
+            ),
             _ => assert!(false),
         }
 
-
         // Header with unexpected termination.
         match read(Context::new(&(string_to_vec("T".to_string())))) {
-            LexResult::Error(_, _, LexError::PrematureEnd(During::Header)) => {
-                assert!(
-                    true,
-                    "Should get ExpectedColon there isn't a newline available"
-                )
-            }
+            LexResult::Error(_, _, LexError::PrematureEnd(During::Header)) => assert!(
+                true,
+                "Should get ExpectedColon there isn't a newline available"
+            ),
             _ => assert!(false),
         }
     }
@@ -1866,12 +1751,10 @@ K:    GFmaj
     fn body_errs() {
         // Unexpected character at start of an entity.
         match read(Context::new(&(string_to_vec("x".to_string()))).in_body()) {
-            LexResult::Error(_, _, LexError::UnexpectedBodyChar(_)) => {
-                assert!(
-                    true,
-                    "Should get ExpectedColon there isn't a newline available"
-                )
-            }
+            LexResult::Error(_, _, LexError::UnexpectedBodyChar(_)) => assert!(
+                true,
+                "Should get ExpectedColon there isn't a newline available"
+            ),
             _ => assert!(false),
         }
     }
@@ -1881,12 +1764,10 @@ K:    GFmaj
     fn body_simple_entities() {
         // End of file in tune body.
         match read(Context::new(&(string_to_vec("".to_string()))).in_body()) {
-            LexResult::Terminal => {
-                assert!(
-                    true,
-                    "Should lex terminal if end of string in body section."
-                )
-            }
+            LexResult::Terminal => assert!(
+                true,
+                "Should lex terminal if end of string in body section."
+            ),
             _ => assert!(false),
         }
 
@@ -1897,7 +1778,6 @@ K:    GFmaj
                 .collect_tokens(),
             vec![T::Newline]
         )
-
     }
 
     #[test]
@@ -1911,8 +1791,7 @@ K:    GFmaj
             Ok((ctx, value)) => {
                 assert_eq!(value, &['T', 'h', 'i', 's']);
                 assert_eq!(
-                    ctx.i,
-                    5,
+                    ctx.i, 5,
                     "Next i should be next character after closing delimiter."
                 );
             }
@@ -2053,12 +1932,10 @@ K:    GFmaj
             Context::new(&(string_to_vec(String::from("XX")))),
             NumberRole::UpperTimeSignature,
         ) {
-            Err((_, _, LexError::ExpectedNumber(NumberRole::UpperTimeSignature))) => {
-                assert!(
-                    true,
-                    "Correct NumberRole should be passed through to error."
-                )
-            }
+            Err((_, _, LexError::ExpectedNumber(NumberRole::UpperTimeSignature))) => assert!(
+                true,
+                "Correct NumberRole should be passed through to error."
+            ),
             _ => assert!(false),
         }
 
@@ -2066,12 +1943,10 @@ K:    GFmaj
             Context::new(&(string_to_vec(String::from("XX")))),
             NumberRole::LowerTimeSignature,
         ) {
-            Err((_, _, LexError::ExpectedNumber(NumberRole::LowerTimeSignature))) => {
-                assert!(
-                    true,
-                    "Correct NumberRole should be passed through to error."
-                )
-            }
+            Err((_, _, LexError::ExpectedNumber(NumberRole::LowerTimeSignature))) => assert!(
+                true,
+                "Correct NumberRole should be passed through to error."
+            ),
             _ => assert!(false),
         }
     }
@@ -2123,24 +1998,20 @@ K:    GFmaj
         // Shorthand.
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("C\n")))), '\n') {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[T::Metre(music::Metre(4, 4))],
-                    "C should be parsed"
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Metre(music::Metre(4, 4))],
+                "C should be parsed"
+            ),
             _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("C|\n")))), '\n') {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[T::Metre(music::Metre(2, 4))],
-                    "C should be parsed"
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Metre(music::Metre(2, 4))],
+                "C should be parsed"
+            ),
             _ => assert!(false),
         }
 
@@ -2148,24 +2019,20 @@ K:    GFmaj
         // Numerical
         //
         match lex_metre(Context::new(&(string_to_vec(String::from("2/4\n")))), '\n') {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[T::Metre(music::Metre(2, 4))],
-                    "2/4 time signature should be parsed"
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Metre(music::Metre(2, 4))],
+                "2/4 time signature should be parsed"
+            ),
             _ => assert!(false),
         }
 
         match lex_metre(Context::new(&(string_to_vec(String::from("6/8\n")))), '\n') {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[T::Metre(music::Metre(6, 8))],
-                    "6/8 time signature should be parsed"
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Metre(music::Metre(6, 8))],
+                "6/8 time signature should be parsed"
+            ),
             _ => assert!(false),
         }
 
@@ -2173,13 +2040,11 @@ K:    GFmaj
             Context::new(&(string_to_vec(String::from("200/400\n")))),
             '\n',
         ) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[T::Metre(music::Metre(200, 400))],
-                    "Ridiculous but valid time signature should be parsed"
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Metre(music::Metre(200, 400))],
+                "Ridiculous but valid time signature should be parsed"
+            ),
             _ => assert!(false),
         }
     }
@@ -2221,69 +2086,70 @@ K:    GFmaj
         let input = &(string_to_vec("C".to_string()));
         let context = Context::new(input);
         match read_key_note(context) {
-            Some((_,
-                  music::PitchClass {
-                      diatonic_pitch_class: music::DiatonicPitchClass::C,
-                      accidental: None,
-                  })) => assert!(true, "Read diatonic key note only, followed by EOF"),
+            Some((
+                _,
+                music::PitchClass {
+                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                    accidental: None,
+                },
+            )) => assert!(true, "Read diatonic key note only, followed by EOF"),
             x => assert!(false, "Expected diatonic pitch class: {:?}", x),
         }
 
         let input = &(string_to_vec("C\n".to_string()));
         let ctx = Context::new(input);
         match read_key_note(ctx) {
-            Some((new_ctx,
-                  music::PitchClass {
-                      diatonic_pitch_class: music::DiatonicPitchClass::C,
-                      accidental: None,
-                  })) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(1),
-                    "Read diatonic key note only, followed by something irrelevant"
-                )
-            }
+            Some((
+                new_ctx,
+                music::PitchClass {
+                    diatonic_pitch_class: music::DiatonicPitchClass::C,
+                    accidental: None,
+                },
+            )) => assert_eq!(
+                new_ctx,
+                ctx.skip(1),
+                "Read diatonic key note only, followed by something irrelevant"
+            ),
             x => assert!(false, "Expected diatonic pitch class: {:?}", x),
         }
 
         let input = &(string_to_vec("F#\n".to_string()));
         let ctx = Context::new(input);
         match read_key_note(ctx) {
-            Some((new_ctx,
-                  music::PitchClass {
-                      diatonic_pitch_class: music::DiatonicPitchClass::F,
-                      accidental: Some(music::Accidental::Sharp),
-                  })) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(2),
-                    "Read diatonic key note and accidental, followed by something irrelevant"
-                )
-            }
+            Some((
+                new_ctx,
+                music::PitchClass {
+                    diatonic_pitch_class: music::DiatonicPitchClass::F,
+                    accidental: Some(music::Accidental::Sharp),
+                },
+            )) => assert_eq!(
+                new_ctx,
+                ctx.skip(2),
+                "Read diatonic key note and accidental, followed by something irrelevant"
+            ),
             x => assert!(false, "Expected diatonic pitch class: {:?}", x),
         }
 
         let input = &(string_to_vec("Gf".to_string()));
         let ctx = Context::new(input);
         match read_key_note(ctx) {
-            Some((new_ctx,
-                  music::PitchClass {
-                      diatonic_pitch_class: music::DiatonicPitchClass::G,
-                      accidental: Some(music::Accidental::Flat),
-                  })) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(2),
-                    "Read diatonic key note and accidental, followed by EOF"
-                )
-            }
+            Some((
+                new_ctx,
+                music::PitchClass {
+                    diatonic_pitch_class: music::DiatonicPitchClass::G,
+                    accidental: Some(music::Accidental::Flat),
+                },
+            )) => assert_eq!(
+                new_ctx,
+                ctx.skip(2),
+                "Read diatonic key note and accidental, followed by EOF"
+            ),
             x => assert!(false, "Expected diatonic pitch class: {:?}", x),
         }
     }
 
     #[test]
     fn read_mode_test() {
-
         // Case insensitive long form, ignoring spaces.
         // Test both, to ensure that the short one doesn't get matched, leaving ctx dangling in the
         // middle of a word.
@@ -2299,26 +2165,22 @@ K:    GFmaj
         let input = &(string_to_vec("MaJoR".to_string()));
         let ctx = Context::new(input);
         match read_mode(ctx) {
-            Some((new_ctx, music::Mode::Major)) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(5),
-                    "Read normal mode works, case insensitive"
-                )
-            }
+            Some((new_ctx, music::Mode::Major)) => assert_eq!(
+                new_ctx,
+                ctx.skip(5),
+                "Read normal mode works, case insensitive"
+            ),
             x => assert!(false, "Expected mode got: {:?}", x),
         }
 
         let input = &(string_to_vec("     MaJoR".to_string()));
         let ctx = Context::new(input);
         match read_mode(ctx) {
-            Some((new_ctx, music::Mode::Major)) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(10),
-                    "Read normal mode works and skips leading whitespace, case insensitive"
-                )
-            }
+            Some((new_ctx, music::Mode::Major)) => assert_eq!(
+                new_ctx,
+                ctx.skip(10),
+                "Read normal mode works and skips leading whitespace, case insensitive"
+            ),
             x => assert!(false, "Expected mode got: {:?}", x),
         }
 
@@ -2335,29 +2197,24 @@ K:    GFmaj
         let input = &(string_to_vec("MaJ".to_string()));
         let ctx = Context::new(input);
         match read_mode(ctx) {
-            Some((new_ctx, music::Mode::Major)) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(3),
-                    "Read normal mode works and skips leading whitespace, case insensitive"
-                )
-            }
+            Some((new_ctx, music::Mode::Major)) => assert_eq!(
+                new_ctx,
+                ctx.skip(3),
+                "Read normal mode works and skips leading whitespace, case insensitive"
+            ),
             x => assert!(false, "Expected mode got: {:?}", x),
         }
 
         let input = &(string_to_vec("   MaJ".to_string()));
         let ctx = Context::new(input);
         match read_mode(ctx) {
-            Some((new_ctx, music::Mode::Major)) => {
-                assert_eq!(
-                    new_ctx,
-                    ctx.skip(6),
-                    "Read short form mode works, case insensitive, skipping whitespace"
-                )
-            }
+            Some((new_ctx, music::Mode::Major)) => assert_eq!(
+                new_ctx,
+                ctx.skip(6),
+                "Read short form mode works, case insensitive, skipping whitespace"
+            ),
             x => assert!(false, "Expected mode got: {:?}", x),
         }
-
     }
 
     #[test]
@@ -2443,7 +2300,6 @@ K:    GFmaj
         }
     }
 
-
     ///
     /// N-time repeat bars
     ///
@@ -2489,7 +2345,6 @@ K:    GFmaj
 
             x => assert!(false, "Expected barline got: {:?}", x),
         }
-
     }
 
     #[test]
@@ -2511,42 +2366,34 @@ K:    GFmaj
         let input = &(string_to_vec("hello world".to_string()));
         let ctx = Context::new(input);
         match ctx.starts_with_insensitive_eager(&['h', 'e', 'l', 'l', 'o']) {
-            (new_ctx, true) => {
-                assert_eq!(
-                    ctx.skip(5),
-                    new_ctx,
-                    "Some string starts with its prefix and skip that lenght"
-                )
-            }
+            (new_ctx, true) => assert_eq!(
+                ctx.skip(5),
+                new_ctx,
+                "Some string starts with its prefix and skip that lenght"
+            ),
             _ => assert!(false, "Expected match"),
         }
 
         let input = &(string_to_vec("hello world".to_string()));
         let ctx = Context::new(input);
         match ctx.starts_with_insensitive_eager(&['H', 'e', 'L', 'l', 'O']) {
-            (new_ctx, true) => {
-                assert_eq!(
-                    ctx.skip(5),
-                    new_ctx,
-                    "Some string starts with its prefix different case and skip that lenght"
-                )
-            }
+            (new_ctx, true) => assert_eq!(
+                ctx.skip(5),
+                new_ctx,
+                "Some string starts with its prefix different case and skip that lenght"
+            ),
             _ => assert!(false, "Expected match"),
         }
 
         let input = &(string_to_vec("hello world".to_string()));
         let ctx = Context::new(input);
         match ctx.starts_with_insensitive_eager(&['h', 'e', 'l', 'l', 'X']) {
-            (new_ctx, false) => {
-                assert_eq!(
-                    ctx,
-                    new_ctx,
-                    "Some string doesn't start with prefix that has non-matching char"
-                )
-            }
+            (new_ctx, false) => assert_eq!(
+                ctx, new_ctx,
+                "Some string doesn't start with prefix that has non-matching char"
+            ),
             _ => assert!(false, "Expected false"),
         }
-
 
         let input = &(string_to_vec("hell".to_string()));
         let ctx = Context::new(input);
@@ -2596,206 +2443,166 @@ K:    GFmaj
         // TODO Lots missing from implementation still.
 
         match lex_note(Context::new(&(string_to_vec(String::from("C"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 0,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 0,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("C,,,"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: -3,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: -3,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         // Octave modifiers.
         match lex_note(Context::new(&(string_to_vec(String::from("C,,"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: -2,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: -2,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("C,"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: -1,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: -1,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("C"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 0,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 0,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("c"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 1,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 1,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("c'"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 2,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 2,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("c''"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 3,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 3,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
 
         match lex_note(Context::new(&(string_to_vec(String::from("c'''"))))) {
-            LexResult::T(_, tokens) => {
-                assert_eq!(
-                    tokens,
-                    &[
-                        T::Note(music::Note(
-                            music::Pitch {
-                                pitch_class: music::PitchClass {
-                                    diatonic_pitch_class: music::DiatonicPitchClass::C,
-                                    accidental: None,
-                                },
-                                octave: 4,
-                            },
-                            music::FractionalDuration(1, 1),
-                        )),
-                    ]
-                )
-            }
+            LexResult::T(_, tokens) => assert_eq!(
+                tokens,
+                &[T::Note(music::Note(
+                    music::Pitch {
+                        pitch_class: music::PitchClass {
+                            diatonic_pitch_class: music::DiatonicPitchClass::C,
+                            accidental: None,
+                        },
+                        octave: 4,
+                    },
+                    music::FractionalDuration(1, 1),
+                )),]
+            ),
 
             _ => assert!(false),
         }
-
-
-
-
     }
 }

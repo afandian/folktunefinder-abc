@@ -1,9 +1,6 @@
 //! Visualisation
 //! Create graphical representations of tunes.
 
-use svg;
-// use tune_ast_two;
-
 pub struct Visualisation {}
 
 impl Visualisation {

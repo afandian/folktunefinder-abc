@@ -1,10 +1,6 @@
 use std::usize;
 extern crate rand;
 
-use self::rand::Rng;
-use self::rand::RngCore;
-use self::rand::ThreadRng;
-
 use std::time::SystemTime;
 
 // Provide at least this much overhead when reallocating.
@@ -155,30 +151,6 @@ impl Grouper {
             }
         }
     }
-}
-
-pub fn timing_test() {
-    let mut groups = Grouper::new();
-    let num = 200000;
-    let mut rng = rand::thread_rng();
-
-    for i in 0..num {
-        let mut start = SystemTime::now();
-        let b: usize = rng.next_u64() as usize % num;
-        groups.add(i, b);
-        let dur = SystemTime::now().duration_since(start);
-
-        if i % 1000 == 0 {
-            eprintln!(
-                "i: {},  groups: {}, duration: {:?}",
-                i,
-                groups.num_groups(),
-                dur
-            );
-        }
-    }
-
-    groups.print_debug();
 }
 
 #[cfg(test)]

@@ -58,16 +58,12 @@ pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
 
             token => current_sequence.push(token),
         }
-
-
     }
 
     tune.voices.push(current_sequence);
 
-
     tune
 }
-
 
 // Heuristics:
 // 1 - Remove consecutive beam breaks.

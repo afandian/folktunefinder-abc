@@ -85,7 +85,7 @@ fn main_typeset() {
 
     let svg = typeset::render_page(typeset_page);
 
-    // println!("{}", svg);
+    println!("{}", svg);
 }
 
 /// Visualise an ABC file. Whatever that means.
@@ -130,7 +130,7 @@ fn main_scan() {
 
 fn main_server() {
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
-    let mut tune_cache = storage::load(&tune_cache_path);
+    let tune_cache = storage::load(&tune_cache_path);
 
     eprintln!("Start server");
 

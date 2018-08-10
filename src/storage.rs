@@ -6,32 +6,15 @@ extern crate time;
 
 use std::collections::HashMap;
 
-use std::io::{LineWriter, Write};
+use std::io::Write;
 
-use std::collections::btree_map::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 
 use std::env;
 use std::path::PathBuf;
 
-use std::str;
-
-use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
-
-/// Read a file from a path, return bytes.
-fn read_file(filename: &PathBuf) -> Vec<u8> {
-    let mut buf: Vec<u8> = Vec::new();
-    let mut f = File::open(filename).expect("file not found");
-    f.read_to_end(&mut buf).expect("can't read");
-    return buf;
-}
-
-fn write_file(filename: &PathBuf, buf: &Vec<u8>) {
-    let mut f = File::create(filename).expect("file not found");
-    f.write_all(&buf).expect("can't write");
-}
 
 /// Take a PathBuf that represents a filename and parse out the tune ID.
 /// None if one couldn't be extracted.
@@ -68,12 +51,12 @@ pub fn load(filename: &PathBuf) -> HashMap<u32, String> {
     let mut result = HashMap::new();
 
     // It may not exist, in which case skip.
-    if let Ok(mut f) = File::open(filename) {
+    if let Ok(f) = File::open(filename) {
         let mut reader = BufReader::new(f);
 
         let mut metadata_buf = vec![0u8; 8];
 
-        while true {
+        loop {
             match reader.read_exact(&mut metadata_buf) {
                 // End of file is ok here.
                 Err(_) => break,
@@ -110,7 +93,7 @@ pub fn load(filename: &PathBuf) -> HashMap<u32, String> {
 
 pub fn save(tunes: &HashMap<u32, String>, filename: &PathBuf) {
     eprintln!("Saving {} tunes", tunes.len());
-    let mut f = File::create(filename).expect("Can't open!");
+    let f = File::create(filename).expect("Can't open!");
     let mut writer = BufWriter::new(f);
 
     let mut metadata_buf = vec![0u8; 8];
@@ -129,8 +112,9 @@ pub fn save(tunes: &HashMap<u32, String>, filename: &PathBuf) {
         metadata_buf[6] = ((length & 0x00FF0000) >> 16) as u8;
         metadata_buf[7] = ((length & 0xFF000000) >> 24) as u8;
 
-        writer.write_all(&metadata_buf);
-        writer.write_all(&string_buf);
+        writer.write_all(&metadata_buf).expect("Can't write");
+
+        writer.write_all(&string_buf).expect("Can't write");
     }
 }
 

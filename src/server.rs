@@ -1,6 +1,5 @@
 use abc_lexer;
 use regex;
-use std;
 use std::collections::HashMap;
 use std::env;
 use tune_ast_three;
@@ -15,7 +14,7 @@ pub fn main(tunes: &HashMap<u32, String>) {
     let key = "HTTP_BIND";
     let bind = match env::var(key) {
         Ok(address) => address,
-        Err(e) => {
+        Err(_) => {
             eprintln!("Using bind default HTTP_BIND address of : 0.0.0.0:8000");
             "0.0.0.0:8000".to_string()
         }
@@ -72,6 +71,6 @@ pub fn main(tunes: &HashMap<u32, String>) {
             Response::from_string("Didn't recognise that.").with_status_code(StatusCode(404))
         };
 
-        request.respond(response);
+        request.respond(response).expect("Can't write response!");
     }
 }

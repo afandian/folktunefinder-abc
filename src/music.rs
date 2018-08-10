@@ -73,7 +73,7 @@ impl ClefShape {
     /// What pitch does this shape represent?
     pub fn pitch(&self) -> PitchClass {
         match self {
-            Treble => PitchClass {
+            ClefShape::Treble => PitchClass {
                 diatonic_pitch_class: DiatonicPitchClass::G,
                 accidental: None,
             },
@@ -112,7 +112,6 @@ pub struct PitchClass {
     pub accidental: Option<Accidental>,
 }
 
-
 /// Interval as number of tones and an accidental.
 /// Note that "unison" is expressed as "1" but here as 0.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -134,18 +133,17 @@ impl Pitch {
     // How many diatonic degrees between this note and another.
     // Note that if this occurs in a key signature, the key signature must be applied first!
     pub fn interval_to(&self, other: Pitch) -> Interval {
-        let degrees = (other.pitch_class.diatonic_pitch_class.to_degree() +
-                           NOTES_IN_SCALE * other.octave) -
-            (self.pitch_class.diatonic_pitch_class.to_degree() + NOTES_IN_SCALE * self.octave);
+        let degrees = (other.pitch_class.diatonic_pitch_class.to_degree()
+            + NOTES_IN_SCALE * other.octave)
+            - (self.pitch_class.diatonic_pitch_class.to_degree() + NOTES_IN_SCALE * self.octave);
 
         let accidental = match other.pitch_class.accidental {
             None => 0,
             Some(ref accidental) => accidental.semitones(),
-        } -
-            match self.pitch_class.accidental {
-                None => 0,
-                Some(ref accidental) => accidental.semitones(),
-            };
+        } - match self.pitch_class.accidental {
+            None => 0,
+            Some(ref accidental) => accidental.semitones(),
+        };
 
         Interval {
             pitch_classes: degrees as i32,
@@ -219,7 +217,6 @@ impl FractionalDuration {
     /// Multiply this fractional duration by another.
     /// Used to resolve a duration against a standard duration.
     pub fn multiply(self, other: FractionalDuration) -> FractionalDuration {
-
         let vulgar = FractionalDuration(self.0 * other.0, self.1 * other.1);
 
         return vulgar.reduce();
@@ -237,7 +234,6 @@ impl FractionalDuration {
     pub fn reduce(self) -> FractionalDuration {
         let max = u32::max(self.0, self.1);
         for i in (1..max + 1).rev() {
-
             if (self.0 % i == 0) && (self.1 % i) == 0 {
                 return FractionalDuration(self.0 / i, self.1 / i);
             }
@@ -268,7 +264,6 @@ impl FractionalDuration {
 
         // Try each top level duration class first.
         for duration_class in DURATION_CLASSES.iter() {
-
             // When there's nothing left to represent, stop there.
             if this.reduce() == FractionalDuration(0, 1) {
                 break;
@@ -283,7 +278,6 @@ impl FractionalDuration {
                     this = this.subtract(duration);
 
                     if this.reduce() == FractionalDuration(0, 1) {
-
                         break;
                     }
 
@@ -581,8 +575,6 @@ mod tests {
             },
             "Augmented first."
         );
-
-
     }
 
 }

@@ -1,1 +1,1 @@
-rustfmt --force src/main.rs
+rustfmt src/main.rs

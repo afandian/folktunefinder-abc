@@ -1,2 +1,2 @@
-git diff src | grep "^.*//"
-git diff src | grep "println!"
+git diff src | grep "^\+.*//"
+git diff src | grep "^\+.*println!"
