@@ -1,10 +1,10 @@
 use abc_lexer;
 use regex;
+use representations;
 use std::collections::HashMap;
 use std::env;
 use tune_ast_three;
 use typeset;
-use representations;
 
 use tiny_http::{Header, Response, Server, StatusCode};
 
@@ -45,10 +45,9 @@ pub fn main(tunes: &HashMap<u32, String>) {
             if let Some(id) = groups.get(1) {
                 if let Ok(id) = id.as_str().parse::<u32>() {
                     if let Some(content) = tunes.get(&id) {
-
                         let ast = representations::abc_to_ast(&content);
                         let svg = representations::ast_to_svg(&ast);
-                        
+
                         Response::from_string(svg)
                             .with_header(
                                 Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..])

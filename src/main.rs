@@ -5,13 +5,14 @@ extern crate tiny_http;
 
 mod abc_lexer;
 mod music;
-mod tune_ast_three;
-mod typeset;
 mod relations;
+mod representations;
 mod server;
 mod storage;
 mod svg;
-mod representations;
+mod tune_ast_three;
+mod typeset;
+mod pitch;
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
@@ -71,7 +72,7 @@ fn main_typeset() {
 
     let ast = representations::abc_to_ast(&stdin);
     let svg = representations::ast_to_svg(&ast);
-                        
+
     println!("{}", svg);
 }
 
@@ -96,6 +97,33 @@ fn main_server() {
     server::main(&tune_cache);
 }
 
+// Analyze and group tunes, save groups to disk.
+// Work in progress.
+fn main_group() {
+    eprintln!("Groups.");
+
+    eprintln!("Load...");
+    let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
+    let abcs = storage::load(&tune_cache_path);
+
+    eprintln!("Parse...");
+    let asts = representations::abc_to_ast_s(&abcs);
+
+    eprintln!("Pitches...");
+    let pitches = representations::ast_to_pitches_s(&asts);
+
+    eprintln!("Intervals...");
+    let intervals = representations::pitches_to_intervals_s(&pitches);
+
+    eprintln!("Interval histograms...");
+    let interval_histograms = representations::intervals_to_interval_histogram_s(&intervals);
+
+    // Now do something with these!
+
+    eprintln!("Got {} results", interval_histograms.len());
+}
+
+
 fn main_unrecognised() {
     eprintln!(
         "Unrecognised command. Try:
@@ -113,6 +141,7 @@ fn main() {
         Some(first) => match first.as_ref() {
             "db_scan" => main_scan(),
             "db_server" => main_server(),
+            "db_group" => main_group(),
             "check" => main_check(),
             "typeset" => main_typeset(),
             _ => main_unrecognised(),

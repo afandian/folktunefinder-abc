@@ -23,6 +23,18 @@ impl DiatonicPitchClass {
             &DiatonicPitchClass::B => 6,
         }
     }
+
+    pub fn to_chromatic(&self) -> u8 {
+        match self {
+            &DiatonicPitchClass::C => 0,
+            &DiatonicPitchClass::D => 2,
+            &DiatonicPitchClass::E => 4,
+            &DiatonicPitchClass::F => 5,
+            &DiatonicPitchClass::G => 7,
+            &DiatonicPitchClass::A => 9,
+            &DiatonicPitchClass::B => 11,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -112,6 +124,15 @@ pub struct PitchClass {
     pub accidental: Option<Accidental>,
 }
 
+impl PitchClass {
+    pub fn to_chromatic(&self) -> u8 {
+        (self.diatonic_pitch_class.to_chromatic() as i16 + match self.accidental {
+            Some(accidental) => accidental.semitones(),
+            _ => 0,
+        }) as u8
+    }
+}
+
 /// Interval as number of tones and an accidental.
 /// Note that "unison" is expressed as "1" but here as 0.
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -149,6 +170,12 @@ impl Pitch {
             pitch_classes: degrees as i32,
             accidental_semitones: accidental,
         }
+    }
+
+    // TODO no key signature or mode yet!
+    pub fn midi_pitch(&self) -> u8 {
+        let diatonic_pitch = self.pitch_class.to_chromatic();
+        (diatonic_pitch as i16 + (self.octave * 12) + 60) as u8
     }
 }
 
@@ -574,6 +601,81 @@ mod tests {
                 accidental_semitones: 1,
             },
             "Augmented first."
+        );
+    }
+
+    #[test]
+    fn midi_pitch_test() {
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: None,
+                },
+                octave: 0,
+            }.midi_pitch(),
+            60,
+            "Middle C"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: None,
+                },
+                octave: 1,
+            }.midi_pitch(),
+            72,
+            "Octave C"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: None,
+                },
+                octave: -1,
+            }.midi_pitch(),
+            48,
+            "Low octave C"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: Some(Accidental::Sharp),
+                },
+                octave: 0,
+            }.midi_pitch(),
+            61,
+            "Middle C#"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: Some(Accidental::Sharp),
+                },
+                octave: 1,
+            }.midi_pitch(),
+            73,
+            "Octave C#"
+        );
+
+        assert_eq!(
+            Pitch {
+                pitch_class: PitchClass {
+                    diatonic_pitch_class: DiatonicPitchClass::C,
+                    accidental: Some(Accidental::Sharp),
+                },
+                octave: -1,
+            }.midi_pitch(),
+            49,
+            "Low octave C#"
         );
     }
 
