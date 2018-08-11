@@ -556,7 +556,7 @@ impl Stave {
     }
 }
 
-pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
+pub fn typeset_from_ast(ast: &tune_ast_three::Tune) -> Page {
     let mut page = Page::new();
 
     let mut current_stave = Stave::new();
@@ -574,12 +574,12 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
     // TODO We only ever use treble clef at the moment.
     let mut current_clef = music::Clef::treble();
 
-    for token in ast.prelude {
-        match token {
+    for ref token in ast.prelude.iter() {
+        match *token {
             l::T::KeySignature(pitch_class, mode) => {
-                key_signature = l::T::KeySignature(pitch_class, mode)
+                key_signature = l::T::KeySignature(*pitch_class, *mode)
             }
-            l::T::Metre(new_metre) => metre = new_metre,
+            l::T::Metre(new_metre) => metre = *new_metre,
             _ => (),
         }
     }
@@ -590,8 +590,8 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
     // TODO add key signature with params
     // TODO add time signature with params.
 
-    for voice in ast.voices {
-        for token in voice {
+    for ref voice in ast.voices.iter() {
+        for ref token in voice.iter() {
             match token {
                 l::T::Newline => {
                     page.boxes.push(HorizontalBox::System(current_stave));
@@ -618,7 +618,7 @@ pub fn typeset_from_ast(ast: tune_ast_three::Tune) -> Page {
                 l::T::Note(note) => {
                     // TODO extras like accidentals etc.
                     let music::Note(pitch, duration) = note;
-                    let clef_interval = current_clef.pitch.interval_to(pitch);
+                    let clef_interval = current_clef.pitch.interval_to(*pitch);
 
                     let position = (clef_interval.pitch_classes + current_clef.centre) as i32;
                     let glyph = duration.to_glyph();
