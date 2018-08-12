@@ -1,14 +1,14 @@
 use abc_lexer as l;
-use tune_ast_three;
 use music;
+use std::f32;
+use tune_ast_three;
 
 // Convert to a monophonic sequence of pitches as MIDI pitch.
 // TODO Currently ignores repeat bars, key signature and mode.
 pub fn build_pitch_sequence(ast: &tune_ast_three::Tune) -> Vec<u8> {
     let mut result = vec![];
 
-
-        let mut key_signature = l::T::KeySignature(
+    let mut key_signature = l::T::KeySignature(
         music::PitchClass {
             diatonic_pitch_class: music::DiatonicPitchClass::C,
             accidental: None,
@@ -21,8 +21,7 @@ pub fn build_pitch_sequence(ast: &tune_ast_three::Tune) -> Vec<u8> {
             l::T::KeySignature(pitch_class, mode) => {
                 key_signature = l::T::KeySignature(*pitch_class, *mode)
             }
-            _ => {
-                }
+            _ => {}
         }
     }
 
@@ -36,8 +35,7 @@ pub fn build_pitch_sequence(ast: &tune_ast_three::Tune) -> Vec<u8> {
                     result.push(midi_pitch);
                 }
 
-                _ => {
-                }
+                _ => {}
             }
         }
     }
@@ -45,10 +43,10 @@ pub fn build_pitch_sequence(ast: &tune_ast_three::Tune) -> Vec<u8> {
     result
 }
 
-pub fn pitch_seq_to_intervals(pitches : &Vec<u8>) -> Vec<i16> {
+pub fn pitch_seq_to_intervals(pitches: &Vec<u8>) -> Vec<i16> {
     let mut result = Vec::with_capacity(pitches.len());
 
-    let mut last : i16 = 0;
+    let mut last: i16 = 0;
     let mut first = true;
     for pitch in pitches.iter() {
         if (first) {
@@ -70,7 +68,7 @@ const HISTOGRAM_SIZE: usize = 12;
 // Resulting size of histogram, including zero.
 pub const HISTOGRAM_WIDTH: usize = HISTOGRAM_SIZE + HISTOGRAM_SIZE + 2;
 
-pub fn build_interval_histogram(pitches : &Vec<i16>) -> [f32; HISTOGRAM_WIDTH] {
+pub fn build_interval_histogram(pitches: &Vec<i16>) -> [f32; HISTOGRAM_WIDTH] {
     let mut histogram = [0.0; HISTOGRAM_WIDTH];
 
     let max = HISTOGRAM_WIDTH as i16;
@@ -78,7 +76,10 @@ pub fn build_interval_histogram(pitches : &Vec<i16>) -> [f32; HISTOGRAM_WIDTH] {
 
     for interval in pitches.iter() {
         // Clamp to range, saturating at each end.
-        let i = i16::min(i16::max(*interval + HISTOGRAM_SIZE as i16, 0), (HISTOGRAM_WIDTH - 1) as i16);
+        let i = i16::min(
+            i16::max(*interval + HISTOGRAM_SIZE as i16, 0),
+            (HISTOGRAM_WIDTH - 1) as i16,
+        );
         histogram[i as usize] += 1.0;
     }
 
@@ -92,3 +93,11 @@ pub fn build_interval_histogram(pitches : &Vec<i16>) -> [f32; HISTOGRAM_WIDTH] {
     histogram
 }
 
+pub fn sim_interval_histogram(a: &[f32; HISTOGRAM_WIDTH], b: &[f32; HISTOGRAM_WIDTH]) -> f32 {
+    let mut result = 0.0;
+    for i in 0..HISTOGRAM_WIDTH {
+        result += (b[i] - a[i]) * (b[i] - a[i]);
+    }
+
+    f32::sqrt(result)
+}

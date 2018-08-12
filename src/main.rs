@@ -6,6 +6,7 @@ extern crate tiny_http;
 
 mod abc_lexer;
 mod music;
+mod pitch;
 mod relations;
 mod representations;
 mod server;
@@ -13,8 +14,6 @@ mod storage;
 mod svg;
 mod tune_ast_three;
 mod typeset;
-mod pitch;
-
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
@@ -108,6 +107,8 @@ fn main_group() {
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
     let abcs = storage::load(&tune_cache_path);
 
+    let max_tune_id = storage::max_id(&abcs);
+
     eprintln!("Parse...");
     let abcs_arc = Arc::new(abcs);
     let asts = representations::abc_to_ast_s(abcs_arc);
@@ -121,11 +122,102 @@ fn main_group() {
     eprintln!("Interval histograms...");
     let interval_histograms = representations::intervals_to_interval_histogram_s(&intervals);
 
-    // Now do something with these!
+    // Now create preliminary groups based on pitch interval histogram euclidean distance.
+    // Each of these groups is considered to be a superset of one or more subgroups.
+
+    // Three methods, need to benchmark.
+
+
+    // 1: All combinations.
+
+    // let mut groups = relations::Grouper::new();
+    // let mut a_count = 0;
+    // for (id_a, histogram_a) in interval_histograms.iter() {
+    //     eprintln!("Compare {}, done {}", id_a, a_count);
+    //     a_count+= 1;
+
+    //     for (id_b, histogram_b) in interval_histograms.iter() {
+    //         if let None = groups.get(*id_b as usize) {
+    //             let sim = pitch::sim_interval_histogram(histogram_a, histogram_b);
+
+    //             if sim < 0.05 && sim > 0.0  {
+    //                 groups.add(*id_a as usize, *id_b as usize);
+    //             }
+    //         }
+    //     }
+    // }
+    // groups.print_debug();
+
+
+    // 2: Same, but don't cover already-done ones. 
+    // May be quicker or slower than 1 depending on access patterns / internals of the hashmap interator.
+
+    let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    let mut a_count = 0;
+    for (id_a, histogram_a) in interval_histograms.iter() {
+        eprintln!("Compare {}, done {}", id_a, a_count);
+        a_count += 1;
+
+        for id_b in (id_a + 1)..max_tune_id {
+            if let Some(histogram_b) = interval_histograms.get(&id_b) {
+                if let None = groups.get(id_b as usize) {
+                    let sim = pitch::sim_interval_histogram(histogram_a, histogram_b);
+
+                    if sim < 0.05 && sim > 0.0 {
+                        groups.add(*id_a as usize, id_b as usize);
+                    }
+                }
+            }
+        }
+    }
+    groups.print_debug();
+
+    // 3: Use the Grouper object to work out which which pairs of tunes to compare.
+    // May be more efficient due to fewer comparisons. But may also lose out on random-access memory locality.
+
+    // eprintln!("Grouping up to tune ID {}", max_tune_id);
+    // let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    // let mut prev_a_id = 0;
+    // let mut a_count = 0;
+    // while let Some(a_id) = groups.next_ungrouped_after(prev_a_id as u32) {
+    //     prev_a_id = a_id;
+
+    //     a_count += 1;
+
+    //     // We may not have anything for this tune id.
+    //     if let Some(a_hist) = interval_histograms.get(&(a_id as u32)) {
+    //         let mut comparisons = 0;
+    //         let mut group_members = 0;
+
+    //         let mut prev_b_id = a_id;
+    //         while let Some(b_id) = groups.next_ungrouped_after(prev_b_id as u32) {
+    //             prev_b_id = b_id;
+    //             comparisons += 1;
+
+    //             if let Some(b_hist) = interval_histograms.get(&(b_id as u32)) {
+    //                 let sim = pitch::sim_interval_histogram(a_hist, b_hist);
+
+    //                 if sim < 0.05 && sim > 0.0 {
+    //                     groups.add(a_id, b_id);
+    //                     group_members += 1;
+    //                 }
+    //             }
+    //         }
+
+    //         eprintln!(
+    //             "Compared id {} in {} comparisons, with {} other members, done {}",
+    //             a_id, comparisons, group_members, a_count
+    //         );
+    //     }
+    // }
+    // groups.print_debug();
+
+    // TODO: Load group before, only generate if missing, save after.
+
+    // TODO further refinements of grouping.
 
     eprintln!("Got {} results", interval_histograms.len());
 }
-
 
 fn main_unrecognised() {
     eprintln!(

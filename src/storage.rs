@@ -160,3 +160,13 @@ pub fn scan(tunes: &mut HashMap<u32, String>, base: &String) {
         }
     }
 }
+
+pub fn max_id(tunes: &HashMap<u32, String>) -> u32 {
+    let mut max = 0;
+
+    for tune_id in tunes.keys() {
+        max = u32::max(max, *tune_id);
+    }
+
+    max
+}

@@ -30,6 +30,12 @@ impl Grouper {
         Grouper { groups }
     }
 
+    pub fn with_max_id(id: usize) -> Grouper {
+        let mut grouper = Grouper::new();
+        grouper.groups.resize(id + 1, usize::MAX);
+        grouper
+    }
+
     // Put A and B into the same group.
     pub fn add(&mut self, a: usize, b: usize) {
         if a == b || a == usize::MAX || b == usize::MAX {
@@ -150,6 +156,18 @@ impl Grouper {
                 eprintln!(" - {}", member);
             }
         }
+    }
+
+    // Find the next tune after this ID that isn't assigned to a group.
+    // This relies on having been constructed with a max tune id so it knows about all the potential IDs.
+    pub fn next_ungrouped_after(&self, a: u32) -> Option<usize> {
+        for i in (a + 1) as usize..self.groups.len() {
+            if self.groups[i] == usize::MAX {
+                return Some(i);
+            }
+        }
+
+        None
     }
 }
 
