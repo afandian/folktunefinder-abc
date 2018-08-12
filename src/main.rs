@@ -1,5 +1,6 @@
 use std::env;
 use std::io::{self, Read};
+use std::sync::Arc;
 extern crate regex;
 extern crate tiny_http;
 
@@ -13,6 +14,7 @@ mod svg;
 mod tune_ast_three;
 mod typeset;
 mod pitch;
+
 
 /// Get STDIN as a string.
 fn get_stdin() -> String {
@@ -107,7 +109,8 @@ fn main_group() {
     let abcs = storage::load(&tune_cache_path);
 
     eprintln!("Parse...");
-    let asts = representations::abc_to_ast_s(&abcs);
+    let abcs_arc = Arc::new(abcs);
+    let asts = representations::abc_to_ast_s(abcs_arc);
 
     eprintln!("Pitches...");
     let pitches = representations::ast_to_pitches_s(&asts);
