@@ -14,6 +14,8 @@ use music;
 ///! Context is a lightweight immutable pointer into a char slice. There's heavy (hopefully
 ///! sensible) use of shadowing / rebinding of 'ctx' variables, so check the scope!
 use std::fmt;
+use std::iter::FromIterator;
+
 
 /// ABC Token.
 /// Shortened as it's used a lot.
@@ -36,6 +38,7 @@ pub enum T {
     Source(String),
     Title(String),
     Words(String),
+    Rhythm(String),
     X(String),
     Transcription(String),
 
@@ -52,6 +55,7 @@ pub enum T {
     NTimeBar(u32),
 
     Note(music::Note),
+    GuitarChord(String)
 }
 
 /// Which bit of the tune are we in?
@@ -195,7 +199,7 @@ impl<'a> fmt::Debug for Context<'a> {
 }
 
 /// Read until delmiter character.
-/// Return that slice plus the content.
+/// Return that slice plus the context.
 fn read_until<'a>(
     ctx: Context<'a>,
     delimiter: char,
@@ -601,6 +605,16 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
     }
 }
 
+fn lex_guitar_chord<'a>(ctx: Context<'a>) -> LexResult {
+    
+    match read_until(ctx, '"') {
+        Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::GuitarChord)),
+        Ok((ctx, content)) => {
+            LexResult::t(ctx, T::GuitarChord(String::from_iter(content.iter())))
+        }
+    }
+}
+
 /// Read an n-time-repeat, e.g. "[2" or "2" immediately following a barline.
 fn read_n_time<'a>(ctx: Context<'a>) -> (Context<'a>, Option<u32>) {
     let ctx = ctx.skip_optional_prefix(&['[']);
@@ -774,6 +788,8 @@ pub enum During {
     KeySignature,
 
     DefaultNoteLenth,
+
+    GuitarChord,
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
@@ -980,6 +996,11 @@ impl LexError {
                         buf,
                         &"I was in the middle of reading a default note length.".to_string(),
                     ),
+                    &During::GuitarChord => indent_and_append_line(
+                        indent,
+                        buf,
+                        &"I was in the middle of reading a chord.".to_string(),
+                    ),
                 }
             }
             &LexError::UnexpectedBodyChar(chr) => {
@@ -1095,6 +1116,7 @@ fn read(ctx: Context) -> LexResult {
                                                 'I' => LexResult::t(ctx, T::Information(value)),
                                                 'N' => LexResult::t(ctx, T::Notes(value)),
                                                 'O' => LexResult::t(ctx, T::Origin(value)),
+                                                'R' => LexResult::t(ctx, T::Rhythm(value)),
                                                 'S' => LexResult::t(ctx, T::Source(value)),
                                                 'T' => LexResult::t(ctx, T::Title(value)),
                                                 'W' => LexResult::t(ctx, T::Words(value)),
@@ -1212,6 +1234,8 @@ fn read(ctx: Context) -> LexResult {
 
                         'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'A' | 'B' | 'C' | 'D' | 'E'
                         | 'F' | 'G' | '^' | '_' | '=' => lex_note(ctx),
+
+                        '"' => lex_guitar_chord(ctx.skip(1)),
 
                         // TODO all tune body entities.
                         _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
