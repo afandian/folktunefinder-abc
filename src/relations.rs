@@ -1,6 +1,8 @@
 use std::usize;
-extern crate rand;
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::time::SystemTime;
 
 // Provide at least this much overhead when reallocating.
@@ -150,11 +152,8 @@ impl Grouper {
     pub fn print_debug(&self) {
         let groups = self.group_ids();
         for group_id in groups.iter() {
-            eprintln!("Group {}", group_id);
             let members = self.get_members(*group_id);
-            for member in members.iter() {
-                eprintln!(" - {}", member);
-            }
+            eprintln!("{:?}", members);
         }
     }
 
@@ -168,6 +167,205 @@ impl Grouper {
         }
 
         None
+    }
+}
+
+// Defines how score normalization for similarity should be done when comparing two documents.
+pub enum ScoreNormalization {
+    // Score is normalized to the length of the 'A' document.
+    // Good when 'a' is a short search term.
+    DocA,
+
+    // Score is normalized to the maximum of the two document lengths.
+    // Good when 'a' is a whole tune and we're looking for doc similarity.
+    Max,
+}
+
+// Binary Vector Space Model, with parameterized term type.
+// Allocated with static size, with each document's term vector represented as 
+// a bitfield as an array of 64-bit words. The size of the bitfield is static,
+// and indexes are wrapped to this size. A little like a hash table, though collisions
+// are taken as part of the rough-and-tumble, so it's not possible to say exactly which
+// terms are in a given document after the fact.
+// Lookups are done by a linear scan over each document, with bitwise intersection and popcount.
+pub struct BinaryVSM<K> {
+    // Map of term to term id. This simply increments for each new temr found.
+    terms: HashMap<K, usize>,
+
+    next_term_id: usize,
+
+    // Map of tune id -> bit vector.
+    // Indexed 2d array as (tune_id * word_capacity) + term_bit
+    docs_terms: Vec<u64>,
+
+    // Top tune id
+    top_id: usize,
+
+    // Size of table per tune, recorded as bits and whole 64-bit words.
+    word_capacity: usize,
+    bit_capacity: usize,
+}
+
+impl<K> BinaryVSM<K>
+where
+    K: Eq + Hash,
+{
+    pub fn new(bit_capacity: usize, top_id: usize) -> BinaryVSM<K> {
+        let word_capacity = bit_capacity / 64 + 1;
+        eprintln!(
+            "New BinaryVSM bits: {} words: {}",
+            bit_capacity, word_capacity
+        );
+
+        let table = vec![0x0; word_capacity * (top_id + 1)];
+
+        BinaryVSM {
+            terms: HashMap::new(),
+            docs_terms: table,
+            next_term_id: 0,
+            word_capacity: word_capacity,
+            bit_capacity: bit_capacity,
+            top_id: top_id,
+        }
+    }
+
+    // Term to Term ID.
+    // This is a number in an unbounded range.
+    // It will later be modded to fit in the term bitfield.
+    pub fn get_term_id(&mut self, term: K) -> usize {
+        if let Some(id) = self.terms.get(&term) {
+            return *id;
+        }
+
+        self.terms.insert(term, self.next_term_id);
+        self.next_term_id += 1;
+        self.next_term_id - 1
+    }
+
+    pub fn get_word_bit(&self, term_id: usize) -> (usize, usize) {
+        (term_id / 64, term_id % 64)
+    }
+
+    pub fn add(&mut self, tune_id: usize, term: K) {
+        if tune_id > self.top_id {
+            return;
+        }
+
+        let mut term_id = self.get_term_id(term);
+
+        // Wrap round to fit in the table.
+        let bit_i = term_id % self.bit_capacity;
+        let (word_offset, bit_offset) = self.get_word_bit(bit_i);
+        self.docs_terms[tune_id * self.word_capacity + word_offset] |= (1 << bit_offset);
+    }
+
+    pub fn search_by_id(
+        &self,
+        a: usize,
+        cutoff: f32,
+        normalization: ScoreNormalization,
+    ) -> ResultSet {
+        let mut results = ResultSet::new();
+
+        if a > (self.top_id) {
+            return results;
+        }
+
+        // TODO can pull this bit out into a search_by_terms.
+        let a_words =
+            &self.docs_terms[self.word_capacity * (a as usize)..self.word_capacity * (a + 1)];
+        let mut a_bitcount = 0;
+        for word in a_words {
+            a_bitcount += word.count_ones();
+        }
+
+        for b in 0..self.top_id {
+            let mut b_bitcount = 0;
+
+            let b_words = &self.docs_terms[b * self.word_capacity..(b + 1) * self.word_capacity];
+            for word in b_words {
+                b_bitcount += word.count_ones();
+            }
+
+            let mut num_intersecting_bits = 0;
+            for i in 0..self.word_capacity {
+                num_intersecting_bits += (a_words[i] & b_words[i]).count_ones();
+            }
+
+            // Different use cases call for different normalization.
+            let result = match normalization {
+                ScoreNormalization::DocA => (num_intersecting_bits as f32) / (a_bitcount as f32),
+                ScoreNormalization::Max => {
+                    (num_intersecting_bits as f32) / (u32::max(a_bitcount, b_bitcount) as f32)
+                }
+            };
+
+            if a != b && num_intersecting_bits > 0 && result >= cutoff {
+                results.add(b, result);
+            }
+        }
+
+        results
+    }
+}
+
+const INTERVAL_WINDOW_SIZE: usize = 5;
+
+// Binary Vector Space model, each term being a sliding window over the interval sequence.
+pub struct IntervalWindowBinaryVSM {
+    pub vsm: BinaryVSM<[i16; INTERVAL_WINDOW_SIZE]>,
+}
+
+impl IntervalWindowBinaryVSM {
+    pub fn new(size: usize, top_id: usize) -> IntervalWindowBinaryVSM {
+        IntervalWindowBinaryVSM {
+            vsm: BinaryVSM::new(size, top_id),
+        }
+    }
+
+    pub fn add(&mut self, tune_id: usize, interval_seq: &Vec<i16>) {
+        for window in interval_seq.windows(INTERVAL_WINDOW_SIZE) {
+            let mut window_arr = [0; INTERVAL_WINDOW_SIZE];
+            window_arr[0] = window[0];
+            window_arr[1] = window[1];
+            window_arr[2] = window[2];
+            window_arr[3] = window[3];
+            window_arr[4] = window[4];
+            self.vsm.add(tune_id, window_arr);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ResultSet {
+    results: HashMap<usize, f32>,
+}
+
+impl ResultSet {
+    pub fn new() -> ResultSet {
+        ResultSet {
+            results: HashMap::new(),
+        }
+    }
+
+    pub fn add(&mut self, tune_id: usize, score: f32) {
+        self.results.insert(tune_id, score);
+    }
+
+    // Return a sorted vec of (tune id, score).
+    pub fn results(&self) -> Vec<(u32, f32)> {
+        let mut result = Vec::<(u32, f32)>::new();
+
+        for (id, score) in self.results.iter() {
+            result.push((*id as u32, *score));
+        }
+
+        // Sort descending by score.
+        result.sort_by(|(a_id, a_score), (b_id, b_score)| {
+            b_score.partial_cmp(a_score).unwrap_or(Ordering::Equal)
+        });
+
+        result
     }
 }
 

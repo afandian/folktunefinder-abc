@@ -108,6 +108,7 @@ fn main_group() {
     let abcs = storage::load(&tune_cache_path);
 
     let max_tune_id = storage::max_id(&abcs);
+    eprintln!("Max tune id: {}", max_tune_id);
 
     eprintln!("Parse...");
     let abcs_arc = Arc::new(abcs);
@@ -126,7 +127,6 @@ fn main_group() {
     // Each of these groups is considered to be a superset of one or more subgroups.
 
     // Three methods, need to benchmark.
-
 
     // 1: All combinations.
 
@@ -148,29 +148,28 @@ fn main_group() {
     // }
     // groups.print_debug();
 
-
-    // 2: Same, but don't cover already-done ones. 
+    // 2: Same, but don't cover already-done ones.
     // May be quicker or slower than 1 depending on access patterns / internals of the hashmap interator.
 
-    let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
-    let mut a_count = 0;
-    for (id_a, histogram_a) in interval_histograms.iter() {
-        eprintln!("Compare {}, done {}", id_a, a_count);
-        a_count += 1;
+    // let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    // let mut a_count = 0;
+    // for (id_a, histogram_a) in interval_histograms.iter() {
+    //     eprintln!("Compare {}, done {}", id_a, a_count);
+    //     a_count += 1;
 
-        for id_b in (id_a + 1)..max_tune_id {
-            if let Some(histogram_b) = interval_histograms.get(&id_b) {
-                if let None = groups.get(id_b as usize) {
-                    let sim = pitch::sim_interval_histogram(histogram_a, histogram_b);
+    //     for id_b in (id_a + 1)..max_tune_id {
+    //         if let Some(histogram_b) = interval_histograms.get(&id_b) {
+    //             if let None = groups.get(id_b as usize) {
+    //                 let sim = pitch::sim_interval_histogram(histogram_a, histogram_b);
 
-                    if sim < 0.05 && sim > 0.0 {
-                        groups.add(*id_a as usize, id_b as usize);
-                    }
-                }
-            }
-        }
-    }
-    groups.print_debug();
+    //                 if sim < 0.05 && sim > 0.0 {
+    //                     groups.add(*id_a as usize, id_b as usize);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+    // groups.print_debug();
 
     // 3: Use the Grouper object to work out which which pairs of tunes to compare.
     // May be more efficient due to fewer comparisons. But may also lose out on random-access memory locality.
@@ -216,7 +215,70 @@ fn main_group() {
 
     // TODO further refinements of grouping.
 
-    eprintln!("Got {} results", interval_histograms.len());
+    // eprintln!("Interval Term VSM...");
+    let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
+
+    let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+
+    let mut a_count = 0;
+    for id_a in 0..max_tune_id {
+        // eprintln!("Compare tune: {}", id_a);
+        let results = interval_term_vsm
+            .vsm
+            .search_by_id(id_a as usize, 0.8, relations::ScoreNormalization::Max)
+            .results();
+        if results.len() > 0 {
+            eprintln!("Tune: {} => {:?}", id_a, results);
+        }
+        for (id_b, score) in results {
+            // eprintln!("  {} = {}", id_b, score);
+            groups.add(id_a as usize, id_b as usize);
+        }
+        a_count += 1;
+        if a_count % 1000 == 0 {
+            eprintln!("Done {} tunes...", a_count);
+        }
+    }
+    groups.print_debug();
+
+    // let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    // for a in interval_histograms.keys() {
+    //     eprintln!("Do {}", a);
+    //     for b in interval_histograms.keys() {
+    //         if a == b || groups.get(*b as usize).is_some() {
+    //             continue;
+    //         }
+    //         let sim = interval_term_vsm.vsm.sim(*a, *b);
+    //         if sim > 0.9 {
+    //             eprintln!("-> {} = {}", b, sim);
+    //             groups.add(*a as usize, *b as usize);
+    //         }
+    //     }
+    // }
+
+    // let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    // let mut a_count = 0;
+    //  for id_a in 0..max_tune_id     {
+    //     eprint!("Compare {}, done {}", id_a, a_count);
+    //     a_count += 1;
+
+    //     let mut comprison_count = 0;
+    //     for id_b in (id_a + 1)..max_tune_id {
+
+    //         if groups.get(id_b as usize).is_some() {
+    //             continue;
+    //         }
+
+    //         let sim = interval_term_vsm.vsm.sim(id_a, id_b);
+    //         if sim > 0.8 {
+    //             eprintln!("-> {} = {}", id_b, sim);
+    //             groups.add(id_a as usize, id_b as usize);
+    //         }
+    //         comprison_count += 1;
+    //         }
+
+    //         eprintln!(" comparisons {}", comprison_count);
+    //     }
 }
 
 fn main_unrecognised() {

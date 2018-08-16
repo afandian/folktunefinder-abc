@@ -4,6 +4,7 @@
 
 use abc_lexer;
 use pitch;
+use relations;
 use std::collections::HashMap;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -99,6 +100,20 @@ pub fn intervals_to_interval_histogram_s(
 
     for (id, content) in inputs.iter() {
         result.insert(*id, intervals_to_interval_histogram(content));
+    }
+
+    result
+}
+
+pub fn intervals_to_binary_vsm(
+    inputs: &HashMap<u32, Vec<i16>>,
+) -> relations::IntervalWindowBinaryVSM {
+    let top_id = inputs.keys().max().unwrap();
+
+    let mut result = relations::IntervalWindowBinaryVSM::new(16127, *top_id as usize);
+
+    for (id, content) in inputs.iter() {
+        result.add(*id as usize, content);
     }
 
     result
