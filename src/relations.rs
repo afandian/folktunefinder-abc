@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::SystemTime;
+use std::fmt::Debug;
 
 // Provide at least this much overhead when reallocating.
 pub const GROWTH_OVERHEAD: usize = 1024;
@@ -199,6 +200,13 @@ pub struct BinaryVSM<K> {
     // Indexed 2d array as (tune_id * word_capacity) + term_bit
     docs_terms: Vec<u64>,
 
+    // Map of tune id -> refs to terms.
+    // Not used for searching but for retrieval.
+    // Values are stored rather than references. The most common usage, 
+    // interval windows, the value is 80 bits. Compared to 64 bits for a pointer,
+    // it's worth the saving in lifetime wrangling.
+    pub docs_terms_literal: Vec<Vec<K>>,
+
     // Top tune id
     top_id: usize,
 
@@ -209,7 +217,7 @@ pub struct BinaryVSM<K> {
 
 impl<K> BinaryVSM<K>
 where
-    K: Eq + Hash,
+    K: Eq + Hash + Clone + Copy + Debug,
 {
     pub fn new(bit_capacity: usize, top_id: usize) -> BinaryVSM<K> {
         let word_capacity = bit_capacity / 64 + 1;
@@ -219,6 +227,7 @@ where
         );
 
         let table = vec![0x0; word_capacity * (top_id + 1)];
+        let literal = vec![vec![]; top_id + 1];
 
         BinaryVSM {
             terms: HashMap::new(),
@@ -226,6 +235,7 @@ where
             next_term_id: 0,
             word_capacity: word_capacity,
             bit_capacity: bit_capacity,
+            docs_terms_literal: literal,
             top_id: top_id,
         }
     }
@@ -258,6 +268,7 @@ where
         let bit_i = term_id % self.bit_capacity;
         let (word_offset, bit_offset) = self.get_word_bit(bit_i);
         self.docs_terms[tune_id * self.word_capacity + word_offset] |= (1 << bit_offset);
+        self.docs_terms_literal[tune_id].push(term.clone());
     }
 
     pub fn search_by_id(
@@ -367,6 +378,7 @@ impl ResultSet {
         result
     }
 }
+
 
 #[cfg(test)]
 mod tests {

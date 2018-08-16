@@ -27,6 +27,14 @@ fn get_stdin() -> String {
     buffer
 }
 
+/// Check an ABC file, print the AST.
+fn main_ast() {
+    // let chars = get_stdin().chars().collect::<Vec<char>>();
+    let input = get_stdin();
+    let ast = representations::abc_to_ast(&input);
+    eprintln!("{:#?}", ast);
+}
+
 /// Check an ABC file, from STDIN to STDOUT.
 fn main_check() {
     let chars = get_stdin().chars().collect::<Vec<char>>();
@@ -46,8 +54,11 @@ fn main_check() {
             eprintln!("{} errors weren't shown", num_unshown);
         }
         return;
+    } else {
+        eprintln!("Ok!");
     }
 }
+
 
 /// Check an ABC file, from STDIN to STDOUT.
 fn main_typeset() {
@@ -216,7 +227,7 @@ fn main_group() {
     // TODO further refinements of grouping.
 
     // eprintln!("Interval Term VSM...");
-    let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
+    let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);   
 
     let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
 
@@ -300,6 +311,7 @@ fn main() {
             "db_server" => main_server(),
             "db_group" => main_group(),
             "check" => main_check(),
+            "ast" => main_ast(),
             "typeset" => main_typeset(),
             _ => main_unrecognised(),
         },
