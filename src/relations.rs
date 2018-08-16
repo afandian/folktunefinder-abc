@@ -153,7 +153,8 @@ impl Grouper {
         let groups = self.group_ids();
         for group_id in groups.iter() {
             let members = self.get_members(*group_id);
-            eprintln!("{:?}", members);
+            // Print to STDOUT as this is useful.
+            println!("{:?}", members);
         }
     }
 
@@ -283,13 +284,11 @@ where
             let mut b_bitcount = 0;
 
             let b_words = &self.docs_terms[b * self.word_capacity..(b + 1) * self.word_capacity];
-            for word in b_words {
-                b_bitcount += word.count_ones();
-            }
 
             let mut num_intersecting_bits = 0;
             for i in 0..self.word_capacity {
                 num_intersecting_bits += (a_words[i] & b_words[i]).count_ones();
+                b_bitcount += b_words[i].count_ones();
             }
 
             // Different use cases call for different normalization.
