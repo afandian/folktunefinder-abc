@@ -1,5 +1,6 @@
 use std::env;
 use std::io::{self, Read};
+use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::thread;
@@ -29,6 +30,20 @@ fn get_stdin() -> String {
     }
 
     buffer
+}
+
+pub fn clusters_path() -> Option<PathBuf> {
+    let key = "BASE";
+    match env::var(key) {
+        Ok(base) => {
+            let mut path = PathBuf::new();
+            path.push(&base);
+            path.push("clusters");
+
+            Some(path)
+        }
+        _ => None,
+    }
 }
 
 /// Check an ABC file, print the AST.
@@ -107,6 +122,14 @@ fn main_server() {
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
     let tune_cache = storage::load(&tune_cache_path);
 
+    // Load pre-created clusters for use in searching.
+    let groups = if let Some(path) = clusters_path() {
+        relations::Grouper::load(&path)
+    } else {
+        eprintln!("Error! Couldn't work out where to find clusters file!");
+        relations::Grouper::new()
+    };
+
     eprintln!("Start server");
 
     server::main(&tune_cache);
@@ -135,9 +158,9 @@ fn main_group() {
     let intervals = representations::pitches_to_intervals_s(&pitches);
 
     // The search is mostly about zipping through large amounts of contiguous memory
-    // and doing simple bit manipulation, so too many threads may cause cache-thrashing 
-    // and make things worse.   
-    const THREADS : u32 = 4;
+    // and doing simple bit manipulation, so too many threads may cause cache-thrashing
+    // and make things worse.
+    const THREADS: u32 = 4;
 
     let start = SystemTime::now();
     let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
@@ -186,8 +209,14 @@ fn main_group() {
     let end = SystemTime::now();
 
     eprintln!("Took {:?}", end.duration_since(start));
-    
+
     // This output is suitable for the current (legacy?) Clojure search engine.
+    if let Some(path) = clusters_path() {
+        groups.save(&path);
+    } else {
+        eprintln!("Error! Couldn't work out where to put the clusters file!");
+    }
+
     groups.print_debug();
 }
 

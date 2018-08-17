@@ -5,6 +5,18 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::SystemTime;
+extern crate glob;
+extern crate time;
+
+use std::io::Write;
+
+use std::fs::File;
+use std::io::Read;
+
+use std::env;
+use std::path::PathBuf;
+
+use std::io::{BufReader, BufWriter};
 
 // Provide at least this much overhead when reallocating.
 pub const GROWTH_OVERHEAD: usize = 1024;
@@ -39,6 +51,57 @@ impl Grouper {
         grouper
     }
 
+    pub fn load(filename: &PathBuf) -> Grouper {
+        let mut groups = Vec::with_capacity(GROWTH_OVERHEAD);
+
+        if let Ok(f) = File::open(filename) {
+            let mut reader = BufReader::new(f);
+            let mut buf = vec![0u8; 8];
+            loop {
+                match reader.read_exact(&mut buf) {
+                    // End of file is ok here.
+                    Err(_) => break,
+                    _ => (),
+                }
+
+                let value: usize =
+                    (buf[0] as usize) | (buf[1] as usize) << 8 | (buf[2] as usize) << 16
+                        | (buf[3] as usize) << 24 | (buf[4] as usize) << 32
+                        | (buf[5] as usize) << 40 | (buf[6] as usize) << 48
+                        | (buf[7] as usize) << 56;
+
+                groups.push(value);
+            }
+        } else {
+            eprintln!("No pre-existing tune cache file found, starting from scratch.");
+        }
+
+        Grouper { groups }
+    }
+
+    pub fn save(&self, filename: &PathBuf) {
+        let f = File::create(filename).expect("Can't open!");
+        let mut writer = BufWriter::new(f);
+
+        let mut buf = vec![0u8; 8];
+
+        for value in self.groups.iter() {
+            let value = *value;
+            // let length = buf.len();
+
+            buf[0] = ((value & 0x00000000000000FF) >> 0) as u8;
+            buf[1] = ((value & 0x000000000000FF00) >> 8) as u8;
+            buf[2] = ((value & 0x0000000000FF0000) >> 16) as u8;
+            buf[3] = ((value & 0x00000000FF000000) >> 24) as u8;
+            buf[4] = ((value & 0x000000FF00000000) >> 32) as u8;
+            buf[5] = ((value & 0x0000FF0000000000) >> 40) as u8;
+            buf[6] = ((value & 0x00FF000000000000) >> 48) as u8;
+            buf[7] = ((value & 0xFF00000000000000) >> 52) as u8;
+
+            writer.write_all(&buf).expect("Can't write");
+        }
+    }
+
     // Merge this group by the content of the other.
     pub fn extend(&mut self, other: Grouper) {
         // We know about the internals of the other one, so we can take a shortcut.
@@ -49,12 +112,10 @@ impl Grouper {
                 self.add(a, b);
             }
         }
-
     }
 
     // Put A and B into the same group.
     pub fn add(&mut self, a: usize, b: usize) {
-
         if a == b || a == usize::MAX || b == usize::MAX {
             return;
         }
@@ -487,8 +548,7 @@ mod tests {
             groups_all.get_groups(),
             vec![
                 vec![
-                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 
-                    10usize, 11usize, 12usize,
+                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 10usize, 11usize, 12usize,
                 ],
                 vec![7usize, 8usize, 9usize],
                 vec![13usize, 14usize],
@@ -534,13 +594,16 @@ mod tests {
             "Adding unrelated pair results in a second group."
         );
 
-      
         // Add 5 -> 6
         groups.add(5, 6);
 
         assert_eq!(
             groups.get_groups(),
-            vec![vec![1usize, 2usize], vec![3usize, 4usize],vec![5usize, 6usize]],
+            vec![
+                vec![1usize, 2usize],
+                vec![3usize, 4usize],
+                vec![5usize, 6usize],
+            ],
             "Adding unrelated pair results in a second group."
         );
 
@@ -552,8 +615,6 @@ mod tests {
             "Connecting two groups reduces the number of groups."
         );
 
-       
-
         // Now unify the two remaining groups into one.
         groups.add(2, 4);
 
@@ -562,6 +623,5 @@ mod tests {
             vec![vec![1usize, 2usize, 3usize, 4usize, 5usize, 6usize]],
             "Connecting two groups reduces the number of groups."
         );
-
     }
 }
