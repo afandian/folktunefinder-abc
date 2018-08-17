@@ -16,11 +16,12 @@ use music;
 use std::fmt;
 use std::iter::FromIterator;
 
-
 /// ABC Token.
 /// Shortened as it's used a lot.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum T {
+    CommentLine(String),
+
     Newline,
     BeamBreak,
 
@@ -55,7 +56,7 @@ pub enum T {
     NTimeBar(u32),
 
     Note(music::Note),
-    GuitarChord(String)
+    GuitarChord(String),
 }
 
 /// Which bit of the tune are we in?
@@ -362,9 +363,9 @@ fn lex_metre<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
         // as it enables the lexer to continue at the next token.
         Ok((whole_line_ctx, content)) => {
             if content == &['C'] {
-                LexResult::t(ctx, T::Metre(music::Metre(4, 4)))
+                LexResult::t(whole_line_ctx, T::Metre(music::Metre(4, 4)))
             } else if content == &['C', '|'] {
-                LexResult::t(ctx, T::Metre(music::Metre(2, 4)))
+                LexResult::t(whole_line_ctx, T::Metre(music::Metre(2, 4)))
             } else {
                 // It's a numerical metre.
                 match read_number(ctx, NumberRole::UpperTimeSignature) {
@@ -606,12 +607,9 @@ fn lex_key_signature<'a>(ctx: Context<'a>, delimiter: char) -> LexResult {
 }
 
 fn lex_guitar_chord<'a>(ctx: Context<'a>) -> LexResult {
-    
     match read_until(ctx, '"') {
         Err(ctx) => LexResult::Error(ctx, ctx.i, LexError::PrematureEnd(During::GuitarChord)),
-        Ok((ctx, content)) => {
-            LexResult::t(ctx, T::GuitarChord(String::from_iter(content.iter())))
-        }
+        Ok((ctx, content)) => LexResult::t(ctx, T::GuitarChord(String::from_iter(content.iter()))),
     }
 }
 
@@ -1092,6 +1090,16 @@ fn read(ctx: Context) -> LexResult {
                     let ctx = ctx.skip(1);
 
                     match first_char {
+                        '%' => match read_until(ctx, '\n') {
+                            Ok((ctx, chars)) => {
+                                let value: String = chars.iter().collect();
+                                LexResult::t(ctx, T::CommentLine(value))
+                            }
+                            Err(ctx) => {
+                                LexResult::Error(ctx, ctx.i, LexError::ExpectedDelimiter('\n'))
+                            }
+                        },
+
                         // Text headers.
                         'A' | 'B' | 'C' | 'D' | 'F' | 'G' | 'H' | 'I' | 'N' | 'O' | 'R' | 'S'
                         | 'T' | 'W' | 'X' | 'Z' => {
