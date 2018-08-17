@@ -48,6 +48,9 @@ pub enum T {
     KeySignature(music::PitchClass, music::Mode),
     DefaultNoteLength(music::FractionalDuration),
 
+    // TODO parse this properly if it's ever needed.
+    Tempo(String),
+
     SingleBar,
     DoubleBar,
     OpenRepeat,
@@ -56,7 +59,13 @@ pub enum T {
     NTimeBar(u32),
 
     Note(music::Note),
+    Rest(music::FractionalDuration),
     GuitarChord(String),
+
+    // Dot between notes.
+    // Positive lengthens the note before, negative the note after.
+    // TODO this should be applied to the durations of notes either side. When?
+    Dottage(i8),
 }
 
 /// Which bit of the tune are we in?
@@ -775,6 +784,45 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
     }
 }
 
+fn lex_rest<'a>(ctx: Context<'a>) -> LexResult {
+    let (ctx, visible) = match ctx.first() {
+        Some((ctx, 'z')) | Some((ctx, 'Z')) => (ctx, true),
+        Some((ctx, 'x')) | Some((ctx, 'X')) => (ctx, false),
+        _ => (ctx, true),
+    };
+
+    // Duration has a few different representations, including zero characters.
+    let (ctx, duration) = read_fractional_duration(ctx);
+    LexResult::t(ctx, T::Rest(duration))
+}
+
+/// Lex a tune dotting.
+/// This should be applied to notes' duration, though I'm not quite sure when...
+/// Is it a lex error if it doesn't occur between two notes? Or is it up to the AST builder?
+fn lex_dottage<'a>(ctx: Context<'a>) -> LexResult {
+    // Every barline includes some kind of beam break.
+
+    if let (ctx, true) = ctx.starts_with_insensitive_eager(&['>', '>', '>', '>']) {
+        LexResult::t(ctx, T::Dottage(4))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['>', '>', '>']) {
+        LexResult::t(ctx, T::Dottage(3))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['>', '>']) {
+        LexResult::t(ctx, T::Dottage(2))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['>']) {
+        LexResult::t(ctx, T::Dottage(1))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['<', '<', '<', '<']) {
+        LexResult::t(ctx, T::Dottage(-4))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['<', '<', '<']) {
+        LexResult::t(ctx, T::Dottage(-3))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['<', '<']) {
+        LexResult::t(ctx, T::Dottage(-2))
+    } else if let (ctx, true) = ctx.starts_with_insensitive_eager(&['<']) {
+        LexResult::t(ctx, T::Dottage(-1))
+    } else {
+        LexResult::Error(ctx, ctx.i, LexError::UnrecognisedDots)
+    }
+}
+
 // The activity we were undertaking at the time when something happened.
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub enum During {
@@ -845,7 +893,11 @@ pub enum LexError {
 
     UnrecognisedNote,
 
+    UnrecognisedRest,
+
     ExpectedSlashInNoteLength,
+
+    UnrecognisedDots,
 }
 
 /// Indent and print a line to a string buffer.
@@ -1031,6 +1083,13 @@ impl LexError {
             &LexError::UnrecognisedNote => {
                 buf.push_str("I didn't understand how to read this note.");
             }
+            &LexError::UnrecognisedRest => {
+                buf.push_str("I didn't understand how to read this rest.");
+            }
+
+            &LexError::UnrecognisedDots => {
+                buf.push_str("I didn't understand how to read these note duration dots.");
+            }
         }
     }
 }
@@ -1195,13 +1254,17 @@ fn read(ctx: Context) -> LexResult {
                                         }
 
                                         // Tempo
-                                        'Q' => {
-                                            return LexResult::Error(
+                                        'Q' => match read_until(ctx, '\n') {
+                                            Ok((ctx, chars)) => {
+                                                let value: String = chars.iter().collect();
+                                                LexResult::t(ctx, T::Tempo(value))
+                                            }
+                                            Err(ctx) => LexResult::Error(
                                                 ctx,
                                                 ctx.i,
-                                                LexError::UnimplementedError(4),
-                                            )
-                                        }
+                                                LexError::ExpectedDelimiter('\n'),
+                                            ),
+                                        },
 
                                         // This can only happen if the above cases get out of sync.
                                         _ => {
@@ -1243,7 +1306,11 @@ fn read(ctx: Context) -> LexResult {
                         'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'A' | 'B' | 'C' | 'D' | 'E'
                         | 'F' | 'G' | '^' | '_' | '=' => lex_note(ctx),
 
+                        'Z' | 'z' | 'x' | 'X' => lex_rest(ctx),
+
                         '"' => lex_guitar_chord(ctx.skip(1)),
+
+                        '>' | '<' => lex_dottage(ctx),
 
                         // TODO all tune body entities.
                         _ => LexResult::Error(ctx, ctx.i, LexError::UnexpectedBodyChar(first_char)),
