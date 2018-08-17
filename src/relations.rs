@@ -2,9 +2,9 @@ use std::usize;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::SystemTime;
-use std::fmt::Debug;
 
 // Provide at least this much overhead when reallocating.
 pub const GROWTH_OVERHEAD: usize = 1024;
@@ -39,8 +39,22 @@ impl Grouper {
         grouper
     }
 
+    // Merge this group by the content of the other.
+    pub fn extend(&mut self, other: Grouper) {
+        // We know about the internals of the other one, so we can take a shortcut.
+        // The index of the array is the 'a' id, the value 'b' id.
+        for a in 0..other.groups.len() {
+            let b = other.groups[a];
+            if b != usize::MAX {
+                self.add(a, b);
+            }
+        }
+
+    }
+
     // Put A and B into the same group.
     pub fn add(&mut self, a: usize, b: usize) {
+
         if a == b || a == usize::MAX || b == usize::MAX {
             return;
         }
@@ -79,8 +93,7 @@ impl Grouper {
             // Update all members of A and B's previous groups to be A value.
 
             // Choose a new ID for the group. This will be the lowest ID we find.
-            // Start with special value of MAX.
-            let mut new_id = usize::MAX;
+            let mut new_id = usize::min(a, b);
 
             for i in 0..self.groups.len() {
                 if self.groups[i] == old_group_a || self.groups[i] == old_group_b {
@@ -159,6 +172,16 @@ impl Grouper {
         }
     }
 
+    // Return seq of groups. Could allocate a lot, really designed for testing.
+    pub fn get_groups(&self) -> Vec<Vec<usize>> {
+        let mut result = vec![];
+        let groups = self.group_ids();
+        for group_id in groups.iter() {
+            result.push(self.get_members(*group_id));
+        }
+        result
+    }
+
     // Find the next tune after this ID that isn't assigned to a group.
     // This relies on having been constructed with a max tune id so it knows about all the potential IDs.
     pub fn next_ungrouped_after(&self, a: u32) -> Option<usize> {
@@ -184,7 +207,7 @@ pub enum ScoreNormalization {
 }
 
 // Binary Vector Space Model, with parameterized term type.
-// Allocated with static size, with each document's term vector represented as 
+// Allocated with static size, with each document's term vector represented as
 // a bitfield as an array of 64-bit words. The size of the bitfield is static,
 // and indexes are wrapped to this size. A little like a hash table, though collisions
 // are taken as part of the rough-and-tumble, so it's not possible to say exactly which
@@ -202,7 +225,7 @@ pub struct BinaryVSM<K> {
 
     // Map of tune id -> refs to terms.
     // Not used for searching but for retrieval.
-    // Values are stored rather than references. The most common usage, 
+    // Values are stored rather than references. The most common usage,
     // interval windows, the value is 80 bits. Compared to 64 bits for a pointer,
     // it's worth the saving in lifetime wrangling.
     pub docs_terms_literal: Vec<Vec<K>>,
@@ -379,27 +402,116 @@ impl ResultSet {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extend_groups_test() {
+        // Three chunks.
+        // A: (1, 2, 3) and (4, 5, 6) and (7, 8, 9)
+        // B: (3, 4) and (10, 11, 12), (13, 14)
+        // C: (6, 12)
+
+        let a = vec![(1, 2), (2, 3), (4, 5), (4, 6), (7, 8), (8, 9)];
+        let b = vec![(3, 4), (10, 11), (11, 12), (13, 14)];
+        let c = vec![(6, 12)];
+
+        let mut groups_a = Grouper::with_max_id(15);
+        for (x, y) in a {
+            groups_a.add(x, y);
+        }
+        let mut groups_b = Grouper::with_max_id(15);
+        for (x, y) in b {
+            groups_b.add(x, y);
+        }
+        let mut groups_c = Grouper::with_max_id(15);
+        for (x, y) in c {
+            groups_c.add(x, y);
+        }
+
+        // Check that all groups were built properly.
+        assert_eq!(
+            groups_a.get_groups(),
+            vec![
+                vec![1usize, 2usize, 3usize],
+                vec![4usize, 5usize, 6usize],
+                vec![7usize, 8usize, 9usize],
+            ]
+        );
+        assert_eq!(
+            groups_b.get_groups(),
+            vec![
+                vec![3usize, 4usize],
+                vec![10usize, 11usize, 12usize],
+                vec![13usize, 14usize],
+            ]
+        );
+        assert_eq!(groups_c.get_groups(), vec![vec![6usize, 12usize]]);
+
+        // Now merge them one by one
+        let mut groups_all = Grouper::with_max_id(15);
+
+        // Starting with an empty group.
+        assert_eq!(groups_all.get_groups(), vec![] as Vec<Vec<usize>>);
+
+        // Extend empty with A, should equal A.
+        groups_all.extend(groups_a);
+        assert_eq!(
+            groups_all.get_groups(),
+            vec![
+                vec![1usize, 2usize, 3usize],
+                vec![4usize, 5usize, 6usize],
+                vec![7usize, 8usize, 9usize],
+            ]
+        );
+
+        // Further extend with B.
+        // The (1, 2, 3) and (3, 4) and (4, 5, 6) should have merged into (1, 2, 3, 4, 5, 6)
+        // (7, 8, 9) and (10, 11, 12) and (13, 14) should be separate.
+        groups_all.extend(groups_b);
+        assert_eq!(
+            groups_all.get_groups(),
+            vec![
+                vec![1usize, 2usize, 3usize, 4usize, 5usize, 6usize],
+                vec![7usize, 8usize, 9usize],
+                vec![10usize, 11usize, 12usize],
+                vec![13usize, 14usize],
+            ]
+        );
+
+        // Further extend with C, which should connect groups.
+        // (1, 2, 3, 4, 5, 6, 10, 11, 12) with (13, 14) still separate
+        groups_all.extend(groups_c);
+        assert_eq!(
+            groups_all.get_groups(),
+            vec![
+                vec![
+                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 
+                    10usize, 11usize, 12usize,
+                ],
+                vec![7usize, 8usize, 9usize],
+                vec![13usize, 14usize],
+            ]
+        );
+    }
 
     #[test]
     fn join_groups_test() {
         let mut groups = Grouper::new();
 
         assert_eq!(
-            groups.group_ids(),
-            vec![],
+            groups.get_groups(),
+            vec![] as Vec<Vec<usize>>,
             "Empty grouper returns empty groups."
         );
 
         groups.add(1, 1);
 
         assert_eq!(
-            groups.group_ids(),
-            vec![],
-            "Adding group self to self results singleton set."
+            groups.get_groups(),
+            vec![] as Vec<Vec<usize>>,
+            "Adding group self to self results in nothing."
         );
 
         // Add 1 -> 2
@@ -407,97 +519,49 @@ mod tests {
         groups.add(1, 2);
 
         assert_eq!(
-            groups.group_ids(),
-            vec![1],
-            "Adding 1->2 results in one group with id of first."
+            groups.get_groups(),
+            vec![vec![1usize, 2usize]],
+            "Adding 1->2 results in one with id of first."
         );
-
-        assert_eq!(
-            groups.get(1),
-            groups.get(2),
-            "1 and 2 are in the same group."
-        );
-
-        assert_eq!(groups.get(3), None, "3 is unknown");
 
         // Add 3 -> 4
 
         groups.add(3, 4);
 
         assert_eq!(
-            groups.group_ids().len(),
-            2,
+            groups.get_groups(),
+            vec![vec![1usize, 2usize], vec![3usize, 4usize]],
             "Adding unrelated pair results in a second group."
         );
 
-        assert_eq!(
-            groups.get(3),
-            groups.get(4),
-            "3 and 4 are in the same group."
-        );
-
-        assert!(
-            groups.get(1) != groups.get(3),
-            "1 and 3 are not in the same group."
-        );
-
+      
         // Add 5 -> 6
         groups.add(5, 6);
 
         assert_eq!(
-            groups.group_ids().len(),
-            3,
-            "Adding another unrelated pair results in a third group."
-        );
-
-        assert_eq!(
-            groups.get(5),
-            groups.get(6),
-            "3 and 4 are in the same group."
-        );
-
-        assert!(
-            groups.get(1) != groups.get(5),
-            "1 and 5 are not in the same group."
+            groups.get_groups(),
+            vec![vec![1usize, 2usize], vec![3usize, 4usize],vec![5usize, 6usize]],
+            "Adding unrelated pair results in a second group."
         );
 
         groups.add(2, 5);
 
         assert_eq!(
-            groups.group_ids().len(),
-            2,
+            groups.get_groups(),
+            vec![vec![1usize, 2usize, 5usize, 6usize], vec![3usize, 4usize]],
             "Connecting two groups reduces the number of groups."
         );
 
-        assert_eq!(
-            groups.get(2),
-            groups.get(5),
-            "2 and 5 are now in the same group."
-        );
-
-        assert_eq!(
-            groups.get(1),
-            groups.get(6),
-            "1 and 6 are now in the same group."
-        );
-
-        assert!(
-            groups.get(1) != groups.get(3),
-            "But the second {3,4} group are still distinct from the new {1,2,4,5} group."
-        );
-
-        assert!(
-            groups.get(2) != groups.get(4),
-            "But the second {3,4} group are still distinct from the new {1,2,4,5} group."
-        );
+       
 
         // Now unify the two remaining groups into one.
         groups.add(2, 4);
 
         assert_eq!(
-            groups.group_ids(),
-            vec![1],
-            "When combined, one group remains and the lowest id of all members of the group is used."
+            groups.get_groups(),
+            vec![vec![1usize, 2usize, 3usize, 4usize, 5usize, 6usize]],
+            "Connecting two groups reduces the number of groups."
         );
+
     }
 }
