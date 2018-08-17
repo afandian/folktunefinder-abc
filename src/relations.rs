@@ -26,7 +26,7 @@ pub const GROWTH_OVERHEAD: usize = 1024;
 // If we get over 4 billion tunes, it may be time to consider an Option types.
 // Uses linear searches, but uses constant space and optimised for our corpus.
 // For 200,000 tunes, it takes about half a millisecond to add a connection.
-pub struct Grouper {
+pub struct Clusters {
     // Dense mapping of tune id -> group ID.
     // The ID of a group is the ID of its lowest member.
     // For each tune, group ID can be:
@@ -35,23 +35,23 @@ pub struct Grouper {
     groups: Vec<usize>,
 }
 
-impl Grouper {
-    pub fn new() -> Grouper {
+impl Clusters {
+    pub fn new() -> Clusters {
         // Start non-empty, as we're always going to want to do something.
         // Also means len can never be zero, so we can skip a check where it matters.
         let mut groups = Vec::with_capacity(GROWTH_OVERHEAD);
         groups.resize(GROWTH_OVERHEAD, usize::MAX);
 
-        Grouper { groups }
+        Clusters { groups }
     }
 
-    pub fn with_max_id(id: usize) -> Grouper {
-        let mut grouper = Grouper::new();
-        grouper.groups.resize(id + 1, usize::MAX);
-        grouper
+    pub fn with_max_id(id: usize) -> Clusters {
+        let mut clusters = Clusters::new();
+        clusters.groups.resize(id + 1, usize::MAX);
+        clusters
     }
 
-    pub fn load(filename: &PathBuf) -> Grouper {
+    pub fn load(filename: &PathBuf) -> Clusters {
         let mut groups = Vec::with_capacity(GROWTH_OVERHEAD);
 
         if let Ok(f) = File::open(filename) {
@@ -76,7 +76,7 @@ impl Grouper {
             eprintln!("No pre-existing tune cache file found, starting from scratch.");
         }
 
-        Grouper { groups }
+        Clusters { groups }
     }
 
     pub fn save(&self, filename: &PathBuf) {
@@ -103,7 +103,7 @@ impl Grouper {
     }
 
     // Merge this group by the content of the other.
-    pub fn extend(&mut self, other: Grouper) {
+    pub fn extend(&mut self, other: Clusters) {
         // We know about the internals of the other one, so we can take a shortcut.
         // The index of the array is the 'a' id, the value 'b' id.
         for a in 0..other.groups.len() {
@@ -478,15 +478,15 @@ mod tests {
         let b = vec![(3, 4), (10, 11), (11, 12), (13, 14)];
         let c = vec![(6, 12)];
 
-        let mut groups_a = Grouper::with_max_id(15);
+        let mut groups_a = Clusters::with_max_id(15);
         for (x, y) in a {
             groups_a.add(x, y);
         }
-        let mut groups_b = Grouper::with_max_id(15);
+        let mut groups_b = Clusters::with_max_id(15);
         for (x, y) in b {
             groups_b.add(x, y);
         }
-        let mut groups_c = Grouper::with_max_id(15);
+        let mut groups_c = Clusters::with_max_id(15);
         for (x, y) in c {
             groups_c.add(x, y);
         }
@@ -511,7 +511,7 @@ mod tests {
         assert_eq!(groups_c.get_groups(), vec![vec![6usize, 12usize]]);
 
         // Now merge them one by one
-        let mut groups_all = Grouper::with_max_id(15);
+        let mut groups_all = Clusters::with_max_id(15);
 
         // Starting with an empty group.
         assert_eq!(groups_all.get_groups(), vec![] as Vec<Vec<usize>>);
@@ -558,12 +558,12 @@ mod tests {
 
     #[test]
     fn join_groups_test() {
-        let mut groups = Grouper::new();
+        let mut groups = Clusters::new();
 
         assert_eq!(
             groups.get_groups(),
             vec![] as Vec<Vec<usize>>,
-            "Empty grouper returns empty groups."
+            "Empty Clusters returns empty groups."
         );
 
         groups.add(1, 1);

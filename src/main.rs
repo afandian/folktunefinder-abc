@@ -124,10 +124,10 @@ fn main_server() {
 
     // Load pre-created clusters for use in searching.
     let groups = if let Some(path) = clusters_path() {
-        relations::Grouper::load(&path)
+        relations::Clusters::load(&path)
     } else {
         eprintln!("Error! Couldn't work out where to find clusters file!");
-        relations::Grouper::new()
+        relations::Clusters::new()
     };
 
     eprintln!("Start server");
@@ -135,10 +135,10 @@ fn main_server() {
     server::main(&tune_cache);
 }
 
-// Analyze and group tunes, save groups to disk.
+// Analyze and cluster tunes into groups, save cluster info to disk.
 // Work in progress.
-fn main_group() {
-    eprintln!("Groups.");
+fn main_cluster_preprocess() {
+    eprintln!("Pre-process clusters.");
 
     eprintln!("Load...");
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
@@ -164,7 +164,7 @@ fn main_group() {
 
     let start = SystemTime::now();
     let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
-    let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+    let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
     let vsm_arc = Arc::new(interval_term_vsm);
     let (tx, rx) = channel();
     for thread_i in 0..THREADS {
@@ -172,7 +172,7 @@ fn main_group() {
         let interval_term_vsm = vsm_arc.clone();
         eprintln!("Start thread: {}", thread_i);
         thread::spawn(move || {
-            let mut groups = relations::Grouper::with_max_id(max_tune_id as usize);
+            let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
             let mut a_count = 0;
             for a in 0..max_tune_id {
                 if (a % THREADS) == thread_i {
@@ -223,10 +223,12 @@ fn main_group() {
 fn main_unrecognised() {
     eprintln!(
         "Unrecognised command. Try:
- - db_scan
- - db_server
- - check
- - typeset"
+ - scan - Scan tune DB individual tunes into a single $BASE/tunecache file
+ - cluster - Using the tunecache, cluster tunes and sage to $BASE/clusters file.
+ - server - Run the server. run 'scan' and 'cluster' first!
+ - check - Parse an ABC file from STDIN and check to see if it parses and get error messages.
+ - ast - Parse an ABC file from  STDIN and pring out the abstract syntax tree.
+ - typeset - Parse and ABC file from STDIN and print out an SVG file."
     );
 }
 
@@ -235,9 +237,9 @@ fn main() {
 
     match args.nth(1) {
         Some(first) => match first.as_ref() {
-            "db_scan" => main_scan(),
-            "db_server" => main_server(),
-            "db_group" => main_group(),
+            "scan" => main_scan(),
+            "server" => main_server(),
+            "cluster" => main_cluster_preprocess(),
             "check" => main_check(),
             "ast" => main_ast(),
             "typeset" => main_typeset(),
