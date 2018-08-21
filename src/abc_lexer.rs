@@ -1849,7 +1849,7 @@ K:    GFmaj
     #[test]
     fn body_errs() {
         // Unexpected character at start of an entity.
-        match read(Context::new(&(string_to_vec("x".to_string()))).in_body()) {
+        match read(Context::new(&(string_to_vec("§".to_string()))).in_body()) {
             LexResult::Error(_, _, LexError::UnexpectedBodyChar(_)) => assert!(
                 true,
                 "Should get ExpectedColon there isn't a newline available"

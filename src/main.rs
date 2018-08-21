@@ -165,6 +165,7 @@ fn main_cluster_preprocess() {
     let start = SystemTime::now();
     let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
     let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
+
     let vsm_arc = Arc::new(interval_term_vsm);
     let (tx, rx) = channel();
     for thread_i in 0..THREADS {

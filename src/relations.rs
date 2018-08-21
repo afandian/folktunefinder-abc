@@ -614,7 +614,6 @@ mod tests {
             vec![vec![1usize, 2usize, 5usize, 6usize], vec![3usize, 4usize]],
             "Connecting two groups reduces the number of groups."
         );
-
         // Now unify the two remaining groups into one.
         groups.add(2, 4);
 
