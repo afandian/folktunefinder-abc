@@ -10,6 +10,7 @@ extern crate regex;
 extern crate tiny_http;
 
 mod abc_lexer;
+mod features;
 mod music;
 mod pitch;
 mod relations;
@@ -119,10 +120,11 @@ fn main_scan() {
 }
 
 fn main_server() {
+    eprintln!("Server loading ABCs...");
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
     let tune_cache = storage::load(&tune_cache_path);
 
-    // Load pre-created clusters for use in searching.
+    eprintln!("Server loading clusters...");
     let groups = if let Some(path) = clusters_path() {
         relations::Clusters::load(&path)
     } else {
@@ -130,9 +132,28 @@ fn main_server() {
         relations::Clusters::new()
     };
 
-    eprintln!("Start server");
+    eprintln!("Server reading ABCs...");
+    let abcs_arc = Arc::new(tune_cache);
+    eprintln!("Server parsing ABCs...");
+    let asts = representations::abc_to_ast_s(&abcs_arc);
 
-    server::main(&tune_cache);
+    eprintln!("Server indexing melody...");
+    let pitches = representations::ast_to_pitches_s(&asts);
+    let intervals = representations::pitches_to_intervals_s(&pitches);
+    let interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
+
+    eprintln!("Building feature index...");
+    let features = representations::asts_to_features_s(&asts);
+
+    // TODO allow filtering by features, search by intervals.
+    // TODO build text index.
+    // TODO build synonyms and development tools for features, specifically Rhythm.
+    // features.vsm.print_debug_tunes();
+    // features.debug_print_features();
+
+    eprintln!("Start server");
+    let tune_cache_2 = abcs_arc.clone();
+    server::main(&tune_cache_2);
 }
 
 // Analyze and cluster tunes into groups, save cluster info to disk.
@@ -149,7 +170,7 @@ fn main_cluster_preprocess() {
 
     eprintln!("Parse...");
     let abcs_arc = Arc::new(abcs);
-    let asts = representations::abc_to_ast_s(abcs_arc);
+    let asts = representations::abc_to_ast_s(&abcs_arc);
 
     eprintln!("Pitches...");
     let pitches = representations::ast_to_pitches_s(&asts);

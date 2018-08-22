@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::time::SystemTime;
+
 extern crate glob;
 extern crate time;
 
@@ -301,7 +301,7 @@ pub struct BinaryVSM<K> {
 
 impl<K> BinaryVSM<K>
 where
-    K: Eq + Hash + Clone + Copy + Debug,
+    K: Eq + Hash + Clone + Debug + Ord,
 {
     pub fn new(bit_capacity: usize, top_id: usize) -> BinaryVSM<K> {
         let word_capacity = bit_capacity / 64 + 1;
@@ -346,7 +346,9 @@ where
             return;
         }
 
-        let mut term_id = self.get_term_id(term);
+        // Squirrel away a copy of this in the lookup table.
+        // This is so we can use things like Strings, which can't be simply copied.
+        let mut term_id = self.get_term_id(term.clone().to_owned());
 
         // Wrap round to fit in the table.
         let bit_i = term_id % self.bit_capacity;
@@ -401,6 +403,18 @@ where
 
         results
     }
+
+    pub fn print_debug_tunes(&self) {
+        for id in 0..self.top_id {
+            if self.docs_terms_literal[id].len() > 0 {
+                eprintln!("Doc {}:", id);
+                for term in self.docs_terms_literal[id].iter() {
+                    eprint!("{:?} ", term);
+                }
+                eprintln!("");
+            }
+        }
+    }
 }
 
 const INTERVAL_WINDOW_SIZE: usize = 5;
@@ -426,6 +440,36 @@ impl IntervalWindowBinaryVSM {
             window_arr[3] = window[3];
             window_arr[4] = window[4];
             self.vsm.add(tune_id, window_arr);
+        }
+    }
+}
+
+pub struct FeaturesBinaryVSM {
+    pub vsm: BinaryVSM<(String, String)>,
+}
+
+impl FeaturesBinaryVSM {
+    pub fn new(size: usize, top_id: usize) -> FeaturesBinaryVSM {
+        FeaturesBinaryVSM {
+            vsm: BinaryVSM::new(size, top_id),
+        }
+    }
+
+    pub fn add(&mut self, tune_id: usize, feature_type: String, value: String) {
+        self.vsm.add(tune_id, (feature_type, value));
+    }
+
+    // Print out features.
+    pub fn debug_print_features(&self) {
+        let mut all_terms: Vec<&(String, String)> = self.vsm.terms.keys().collect();
+        all_terms.sort();
+        let mut prev_feature_type = &"".to_string();
+        for (feature_type, feature_value) in all_terms.iter() {
+            if feature_type != prev_feature_type {
+                eprintln!("{}", feature_type);
+                prev_feature_type = feature_type;
+            }
+            eprintln!("  {}", feature_value);
         }
     }
 }

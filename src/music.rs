@@ -35,6 +35,18 @@ impl DiatonicPitchClass {
             &DiatonicPitchClass::B => 11,
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            &DiatonicPitchClass::C => "C".to_string(),
+            &DiatonicPitchClass::D => "D".to_string(),
+            &DiatonicPitchClass::E => "E".to_string(),
+            &DiatonicPitchClass::F => "F".to_string(),
+            &DiatonicPitchClass::G => "G".to_string(),
+            &DiatonicPitchClass::A => "A".to_string(),
+            &DiatonicPitchClass::B => "B".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -56,6 +68,16 @@ impl Accidental {
             &Accidental::DoubleFlat => -2,
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            &Accidental::Sharp => "♯".to_string(),
+            &Accidental::Flat => "♭".to_string(),
+            &Accidental::Natural => "♮".to_string(),
+            &Accidental::DoubleSharp => "𝄪".to_string(),
+            &Accidental::DoubleFlat => "𝄫".to_string(),
+        }
+    }
 }
 
 /// Musical Mode
@@ -74,6 +96,23 @@ pub enum Mode {
 
     Major,
     Minor,
+}
+
+impl Mode {
+    pub fn to_string(&self) -> String {
+        match self {
+            &Mode::Natural => "Natural".to_string(),
+            &Mode::Lydian => "Lydian".to_string(),
+            &Mode::Ionian => "Ionian".to_string(),
+            &Mode::Mixolydian => "Mixolydian".to_string(),
+            &Mode::Dorian => "Dorian".to_string(),
+            &Mode::Aeolian => "Aeolian".to_string(),
+            &Mode::Phrygian => "Phrygian".to_string(),
+            &Mode::Locrian => "Locrian".to_string(),
+            &Mode::Major => "Major".to_string(),
+            &Mode::Minor => "Minor".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
@@ -131,6 +170,17 @@ impl PitchClass {
             _ => 0,
         }) as u8
     }
+
+    pub fn to_string(&self) -> String {
+        format!(
+            "{}{}",
+            self.diatonic_pitch_class.to_string(),
+            match self.accidental {
+                Some(accidental) => accidental.to_string(),
+                None => "".to_string(),
+            }
+        )
+    }
 }
 
 /// Interval as number of tones and an accidental.
@@ -182,6 +232,12 @@ impl Pitch {
 /// Time signature
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Metre(pub u32, pub u32);
+
+impl Metre {
+    pub fn to_string(&self) -> String {
+        format!("{}/{}", self.0, self.1)
+    }
+}
 
 /// The duration class of a notehead, i.e. its shape.
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]

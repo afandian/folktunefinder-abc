@@ -3,6 +3,7 @@
 //! Intended to be chained, cached, etc.
 
 use abc_lexer;
+use features;
 use pitch;
 use relations;
 use std::collections::HashMap;
@@ -23,7 +24,7 @@ pub fn abc_to_ast(content: &String) -> tune_ast_three::Tune {
 
 // Convert a HashMap of ABC tunes as a String into Abstract Syntax Trees.
 // Take an ARC wrapped value so it works with threads.
-pub fn abc_to_ast_s(inputs_arc: Arc<HashMap<u32, String>>) -> HashMap<u32, tune_ast_three::Tune> {
+pub fn abc_to_ast_s(inputs_arc: &Arc<HashMap<u32, String>>) -> HashMap<u32, tune_ast_three::Tune> {
     let mut result = HashMap::with_capacity(inputs_arc.clone().len());
 
     let (tx, rx) = channel();
@@ -117,4 +118,28 @@ pub fn intervals_to_binary_vsm(
     }
 
     result
+}
+
+pub fn ast_to_features(ast: &tune_ast_three::Tune) -> Vec<(String, String)> {
+    features::extract_all_features(ast)
+}
+
+// We think there will be about this many features.
+// The number of features is small and in theory bounded.
+// We want matchines to be exact with no collisions.
+const FEATURES_SIZE: usize = 512;
+
+pub fn asts_to_features_s(
+    inputs: &HashMap<u32, tune_ast_three::Tune>,
+) -> relations::FeaturesBinaryVSM {
+    let mut vsm = relations::FeaturesBinaryVSM::new(FEATURES_SIZE, inputs.len());
+
+    for (id, content) in inputs.iter() {
+        let features = ast_to_features(content);
+        for (feature_type, feature_value) in features {
+            vsm.add(*id as usize, feature_type, feature_value);
+        }
+    }
+
+    vsm
 }
