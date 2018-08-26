@@ -113,6 +113,21 @@ impl Mode {
             &Mode::Minor => "Minor".to_string(),
         }
     }
+
+    pub fn scale_intervals(&self) -> &[u16] {
+        match self {
+            &Mode::Natural => &[2, 2, 1, 2, 2, 2, 1],
+            &Mode::Lydian => &[2, 2, 2, 1, 2, 2, 1],
+            &Mode::Ionian => &[2, 2, 1, 2, 2, 2, 1],
+            &Mode::Mixolydian => &[2, 2, 1, 2, 2, 1, 2],
+            &Mode::Dorian => &[2, 1, 2, 2, 2, 1, 2],
+            &Mode::Aeolian => &[2, 1, 2, 2, 1, 2, 2],
+            &Mode::Phrygian => &[1, 2, 2, 2, 1, 2, 2],
+            &Mode::Locrian => &[1, 2, 2, 1, 2, 2, 2],
+            &Mode::Major => &[2, 2, 1, 2, 2, 2, 1],
+            &Mode::Minor => &[2, 1, 2, 2, 2, 1, 2],
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
