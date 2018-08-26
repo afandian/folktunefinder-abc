@@ -131,6 +131,7 @@ Serve up ABC, typeset SVG, and in future, perform search:
 
  - `BASE` - where are the ABC tunes? e.g. /tmp/tunes
  - `HTTP_BIND` - http bind address and port for server? e.g. 0.0.0.0:8000
+ - `DEBUG_MAX_ID` - limit tune top id to this value. Selects a subset for profiling, debugging, etc.
 
 ## Performance
 

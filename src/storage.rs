@@ -50,6 +50,16 @@ pub fn tune_cache_path() -> Option<PathBuf> {
 pub fn load(filename: &PathBuf) -> HashMap<u32, String> {
     let mut result = HashMap::new();
 
+    // Limit the tunes to this max id for debugging / profiling.
+    let key = "DEBUG_MAX_ID";
+    let debug_max_id = match env::var(key) {
+        Ok(value) => {
+            eprintln!("Using {} {}", key, value);
+            Some(value.parse::<u32>().unwrap())
+        }
+        _ => None,
+    };
+
     // It may not exist, in which case skip.
     if let Ok(f) = File::open(filename) {
         let mut reader = BufReader::new(f);
@@ -80,7 +90,17 @@ pub fn load(filename: &PathBuf) -> HashMap<u32, String> {
             // End of file here is unexpected. Panic!
             let tune_string = String::from_utf8(string_buf).unwrap();
 
-            result.insert(tune_id, tune_string);
+            // Normally we load all tunes.
+            // If this config is set, ignore those above this value.
+            match debug_max_id {
+                Some(x) if tune_id <= x => {
+                    result.insert(tune_id, tune_string);
+                }
+                None => {
+                    result.insert(tune_id, tune_string);
+                }
+                _ => (),
+            };
         }
 
         eprintln!("Loaded {} tunes", result.len());
