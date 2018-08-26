@@ -257,6 +257,7 @@ impl Clusters {
 }
 
 // Defines how score normalization for similarity should be done when comparing two documents.
+#[derive(Clone, Copy)]
 pub enum ScoreNormalization {
     // Score is normalized to the length of the 'A' document.
     // Good when 'a' is a short search term.
@@ -357,21 +358,14 @@ where
         self.docs_terms_literal[tune_id].push(term.clone());
     }
 
-    pub fn search_by_id(
+    pub fn search_by_bitfield_words(
         &self,
-        a: usize,
+        a_words: &[u64],
         cutoff: f32,
         normalization: ScoreNormalization,
     ) -> ResultSet {
         let mut results = ResultSet::new();
 
-        if a > (self.top_id) {
-            return results;
-        }
-
-        // TODO can pull this bit out into a search_by_terms.
-        let a_words =
-            &self.docs_terms[self.word_capacity * (a as usize)..self.word_capacity * (a + 1)];
         let mut a_bitcount = 0;
         for word in a_words {
             a_bitcount += word.count_ones();
@@ -396,12 +390,29 @@ where
                 }
             };
 
-            if a != b && num_intersecting_bits > 0 && result >= cutoff {
+            if num_intersecting_bits > 0 && result >= cutoff {
                 results.add(b, result);
             }
         }
 
         results
+    }
+
+    pub fn search_by_id(
+        &self,
+        a: usize,
+        cutoff: f32,
+        normalization: ScoreNormalization,
+    ) -> ResultSet {
+        let mut results = ResultSet::new();
+
+        if a > (self.top_id) {
+            return results;
+        }
+
+        let a_words =
+            &self.docs_terms[self.word_capacity * (a as usize)..self.word_capacity * (a + 1)];
+        self.search_by_bitfield_words(a_words, cutoff, normalization)
     }
 
     pub fn print_debug_tunes(&self) {
