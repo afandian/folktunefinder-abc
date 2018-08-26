@@ -342,6 +342,7 @@ where
         (term_id / 64, term_id % 64)
     }
 
+    // TODO could somehow merge add and search_by_terms.
     pub fn add(&mut self, tune_id: usize, term: K) {
         if tune_id > self.top_id {
             return;
@@ -356,6 +357,26 @@ where
         let (word_offset, bit_offset) = self.get_word_bit(bit_i);
         self.docs_terms[tune_id * self.word_capacity + word_offset] |= (1 << bit_offset);
         self.docs_terms_literal[tune_id].push(term.clone());
+    }
+
+    pub fn search_by_terms(
+        &self,
+        terms: Vec<K>,
+        cutoff: f32,
+        normalization: ScoreNormalization,
+    ) -> ResultSet {
+        eprintln!("Search by terms: {:?}", terms);
+        let mut words = vec![0; self.word_capacity];
+        for term in terms.iter() {
+            // If the term doesn't exist, just ignore.
+            if let Some(term_id) = self.terms.get(&term) {
+                let bit_i = term_id % self.bit_capacity;
+                let (word_offset, bit_offset) = self.get_word_bit(bit_i);
+                words[word_offset] |= (1 << bit_offset);
+            }
+        }
+
+        self.search_by_bitfield_words(&words, cutoff, normalization)
     }
 
     pub fn search_by_bitfield_words(
@@ -442,7 +463,11 @@ impl IntervalWindowBinaryVSM {
         }
     }
 
-    pub fn add(&mut self, tune_id: usize, interval_seq: &Vec<i16>) {
+    // TODO this allocates an interrim vec so it can be reused.
+    // Could somehow do this as an interator?
+    fn intervals_to_terms(interval_seq: &[i16]) -> Vec<[i16; INTERVAL_WINDOW_SIZE]> {
+        let mut terms = vec![];
+
         for window in interval_seq.windows(INTERVAL_WINDOW_SIZE) {
             let mut window_arr = [0; INTERVAL_WINDOW_SIZE];
             window_arr[0] = window[0];
@@ -450,8 +475,27 @@ impl IntervalWindowBinaryVSM {
             window_arr[2] = window[2];
             window_arr[3] = window[3];
             window_arr[4] = window[4];
-            self.vsm.add(tune_id, window_arr);
+            terms.push(window_arr);
         }
+
+        terms
+    }
+
+    pub fn add(&mut self, tune_id: usize, interval_seq: &Vec<i16>) {
+        for term in IntervalWindowBinaryVSM::intervals_to_terms(&interval_seq) {
+            self.vsm.add(tune_id, term);
+        }
+    }
+
+    pub fn search(
+        self,
+        interval_seq: &Vec<i16>,
+        cutoff: f32,
+        normalization: ScoreNormalization,
+    ) -> ResultSet {
+        let terms = IntervalWindowBinaryVSM::intervals_to_terms(interval_seq);
+
+        self.vsm.search_by_terms(terms, cutoff, normalization)
     }
 }
 

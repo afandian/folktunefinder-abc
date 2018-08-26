@@ -145,6 +145,15 @@ fn main_server() {
     eprintln!("Building feature index...");
     let features = representations::asts_to_features_s(&asts);
 
+    // TODO just a small search demo.
+    // Parsing is still missing out on some key signature stuff, so this isn't entirely correct yet.
+    let search_pitches = vec![77, 76, 74, 72, 69, 67, 69, 74, 72, 69, 67, 65];
+    let search_intervals = representations::pitches_to_intervals(&search_pitches);
+    eprintln!(
+        "Search result: {:?}",
+        interval_term_vsm.search(&search_intervals, 0.8, relations::ScoreNormalization::DocA)
+    );
+
     // TODO allow filtering by features, search by intervals.
     // TODO build text index.
     // TODO build synonyms and development tools for features, specifically Rhythm.
