@@ -10,6 +10,7 @@ extern crate regex;
 extern crate tiny_http;
 
 mod abc_lexer;
+mod end_to_end_test;
 mod features;
 mod music;
 mod pitch;
