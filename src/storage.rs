@@ -73,11 +73,13 @@ pub fn load(filename: &PathBuf) -> HashMap<u32, String> {
                 _ => (),
             }
 
-            let tune_id: u32 = (metadata_buf[0] as u32) | (metadata_buf[1] as u32) << 8
+            let tune_id: u32 = (metadata_buf[0] as u32)
+                | (metadata_buf[1] as u32) << 8
                 | (metadata_buf[2] as u32) << 16
                 | (metadata_buf[3] as u32) << 24;
 
-            let length: usize = (metadata_buf[4] as usize) | (metadata_buf[5] as usize) << 8
+            let length: usize = (metadata_buf[4] as usize)
+                | (metadata_buf[5] as usize) << 8
                 | (metadata_buf[6] as usize) << 16
                 | (metadata_buf[7] as usize) << 24;
 

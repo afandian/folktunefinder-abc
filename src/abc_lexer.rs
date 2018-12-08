@@ -1355,7 +1355,7 @@ impl<'a> Lexer<'a> {
             LexResult::Error(_, _, _) => None,
             LexResult::Terminal => None,
         }).flat_map(|x| x)
-            .collect::<Vec<T>>()
+        .collect::<Vec<T>>()
     }
 
     pub fn collect_errors(self) -> Vec<(Context<'a>, usize, LexError)> {
@@ -1743,8 +1743,7 @@ M:2/4
 M:        5/8
 L:1/8
 K:    GFmaj
-"
-                .to_string(),
+".to_string(),
         ));
 
         let lexer = Lexer::new(input);

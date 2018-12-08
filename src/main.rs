@@ -6,8 +6,15 @@ use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
 
+extern crate serde;
+extern crate serde_json;
+
+#[macro_use]
+extern crate serde_derive;
+
 extern crate regex;
 extern crate tiny_http;
+extern crate url;
 
 mod abc_lexer;
 mod end_to_end_test;
@@ -16,6 +23,7 @@ mod music;
 mod pitch;
 mod relations;
 mod representations;
+mod search;
 mod server;
 mod storage;
 mod svg;
@@ -120,11 +128,14 @@ fn main_scan() {
     storage::save(&tune_cache, &tune_cache_path);
 }
 
+fn main_server_new() {}
+
 fn main_server() {
     eprintln!("Server loading ABCs...");
     let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
     let tune_cache = storage::load(&tune_cache_path);
 
+    // Load clusters outside the Search engine object as we might want to swap in different ones.
     eprintln!("Server loading clusters...");
     let groups = if let Some(path) = clusters_path() {
         relations::Clusters::load(&path)
@@ -133,41 +144,16 @@ fn main_server() {
         relations::Clusters::new()
     };
 
-    eprintln!("Server reading ABCs...");
-    let abcs_arc = Arc::new(tune_cache);
-    eprintln!("Server parsing ABCs...");
-    let asts = representations::abc_to_ast_s(&abcs_arc);
-
-    eprintln!("Server indexing melody...");
-    let pitches = representations::ast_to_pitches_s(&asts);
-    let intervals = representations::pitches_to_intervals_s(&pitches);
-    let interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
-
-    eprintln!("Building feature index...");
-    let features = representations::asts_to_features_s(&asts);
-
-    // TODO just a small search demo.
-    // Parsing is still missing out on some key signature stuff, so this isn't entirely correct yet.
-    let search_pitches = vec![77, 76, 74, 72, 69, 67, 69, 74, 72, 69, 67, 65];
-    let search_intervals = representations::pitches_to_intervals(&search_pitches);
-    eprintln!(
-        "Search result: {:?}",
-        interval_term_vsm.search(&search_intervals, 0.8, relations::ScoreNormalization::DocA)
-    );
-
-    // TODO allow filtering by features, search by intervals.
-    // TODO build text index.
-    // TODO build synonyms and development tools for features, specifically Rhythm.
-    // features.vsm.print_debug_tunes();
-    // features.debug_print_features();
-
     eprintln!("Start server");
-    let tune_cache_2 = abcs_arc.clone();
-    server::main(&tune_cache_2);
+
+    let searcher = search::Search::new(tune_cache, groups);
+
+    server::main(&searcher);
 }
 
 // Analyze and cluster tunes into groups, save cluster info to disk.
 // Work in progress.
+// TODO maybe use the Search object now?
 fn main_cluster_preprocess() {
     eprintln!("Pre-process clusters.");
 

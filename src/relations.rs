@@ -18,6 +18,8 @@ use std::path::PathBuf;
 
 use std::io::{BufReader, BufWriter};
 
+use search::ResultSet;
+
 // Provide at least this much overhead when reallocating.
 pub const GROWTH_OVERHEAD: usize = 1024;
 
@@ -64,11 +66,14 @@ impl Clusters {
                     _ => (),
                 }
 
-                let value: usize =
-                    (buf[0] as usize) | (buf[1] as usize) << 8 | (buf[2] as usize) << 16
-                        | (buf[3] as usize) << 24 | (buf[4] as usize) << 32
-                        | (buf[5] as usize) << 40 | (buf[6] as usize) << 48
-                        | (buf[7] as usize) << 56;
+                let value: usize = (buf[0] as usize)
+                    | (buf[1] as usize) << 8
+                    | (buf[2] as usize) << 16
+                    | (buf[3] as usize) << 24
+                    | (buf[4] as usize) << 32
+                    | (buf[5] as usize) << 40
+                    | (buf[6] as usize) << 48
+                    | (buf[7] as usize) << 56;
 
                 groups.push(value);
             }
@@ -488,7 +493,7 @@ impl IntervalWindowBinaryVSM {
     }
 
     pub fn search(
-        self,
+        &self,
         interval_seq: &Vec<i16>,
         cutoff: f32,
         normalization: ScoreNormalization,
@@ -526,39 +531,6 @@ impl FeaturesBinaryVSM {
             }
             eprintln!("  {}", feature_value);
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct ResultSet {
-    results: HashMap<usize, f32>,
-}
-
-impl ResultSet {
-    pub fn new() -> ResultSet {
-        ResultSet {
-            results: HashMap::new(),
-        }
-    }
-
-    pub fn add(&mut self, tune_id: usize, score: f32) {
-        self.results.insert(tune_id, score);
-    }
-
-    // Return a sorted vec of (tune id, score).
-    pub fn results(&self) -> Vec<(u32, f32)> {
-        let mut result = Vec::<(u32, f32)>::new();
-
-        for (id, score) in self.results.iter() {
-            result.push((*id as u32, *score));
-        }
-
-        // Sort descending by score.
-        result.sort_by(|(a_id, a_score), (b_id, b_score)| {
-            b_score.partial_cmp(a_score).unwrap_or(Ordering::Equal)
-        });
-
-        result
     }
 }
 
@@ -646,9 +618,7 @@ mod tests {
         assert_eq!(
             groups_all.get_groups(),
             vec![
-                vec![
-                    1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 10usize, 11usize, 12usize,
-                ],
+                vec![1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 10usize, 11usize, 12usize,],
                 vec![7usize, 8usize, 9usize],
                 vec![13usize, 14usize],
             ]
