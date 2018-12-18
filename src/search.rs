@@ -1,5 +1,5 @@
-//! Search
-//! Search engine that ties various things together.
+//! SearchEngine
+//! SearchEngine engine that ties various things together.
 //! Plus structures for conducting searches and representing results.
 //! Results are JSON-serializable.
 
@@ -69,19 +69,19 @@ pub struct Query {
 // TODO Trade off storage and pre-parsing of ASTs with RAM usage vs time to fetch / reconstruct data.
 // Once we've indexed it we could either keep only the ABC text in memory and parse on demand.
 // Or even just store pointers to disk.
-pub struct Search {
+pub struct SearchEngine {
     clusters: relations::Clusters,
 
     // ABCs are shared around threads.
-    pub abcs: Arc<HashMap<u32, String>>,
+    pub abcs: Arc<storage::ABCCache>,
 
     pub asts: HashMap<u32, tune_ast_three::Tune>,
 
     interval_term_vsm: relations::IntervalWindowBinaryVSM,
 }
 
-impl Search {
-    pub fn new(abcs: HashMap<u32, String>, clusters: relations::Clusters) -> Search {
+impl SearchEngine {
+    pub fn new(abcs: storage::ABCCache, clusters: relations::Clusters) -> SearchEngine {
         let abcs_arc = Arc::new(abcs);
         eprintln!("Parsing ABCs...");
         let asts = representations::abc_to_ast_s(&abcs_arc);
@@ -98,7 +98,7 @@ impl Search {
         // TODO build text index.
         // TODO build synonyms and development tools for features, specifically Rhythm.
 
-        Search {
+        SearchEngine {
             clusters,
             asts,
             abcs: abcs_arc,
@@ -133,7 +133,7 @@ pub struct DecoratedResult {
 
 pub fn export_results(
     result_set: &ResultSet,
-    searcher: &Search,
+    searcher: &SearchEngine,
     offset: usize,
     rows: usize,
 ) -> Vec<DecoratedResult> {

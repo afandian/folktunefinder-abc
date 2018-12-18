@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::thread;
+use storage;
 use tune_ast_three;
 use typeset;
 
@@ -24,22 +25,27 @@ pub fn abc_to_ast(content: &String) -> tune_ast_three::Tune {
 
 // Convert a HashMap of ABC tunes as a String into Abstract Syntax Trees.
 // Take an ARC wrapped value so it works with threads.
-pub fn abc_to_ast_s(inputs_arc: &Arc<HashMap<u32, String>>) -> HashMap<u32, tune_ast_three::Tune> {
-    let mut result = HashMap::with_capacity(inputs_arc.clone().len());
+pub fn abc_to_ast_s(inputs_arc: &Arc<storage::ABCCache>) -> HashMap<u32, tune_ast_three::Tune> {
+    let mut result = HashMap::with_capacity(inputs_arc.clone().max_id() as usize);
 
     let (tx, rx) = channel();
     for thread_i in 0..THREADS {
         let tx_clone = tx.clone();
-        let inputs_clone = inputs_arc.clone();
+        let mut inputs_clone = inputs_arc.clone();
 
         thread::spawn(move || {
             let mut partition_result =
-                HashMap::with_capacity(inputs_clone.len() / THREADS as usize);
+                HashMap::with_capacity(inputs_clone.max_id() as usize / THREADS as usize);
 
-            for (i, content) in inputs_clone.iter() {
+            // Need to take a mutable copy because `get` requires mut.
+            // Bit messy, TODO tidy up.
+            let mut inputs_clone: storage::ABCCache = (*inputs_clone).clone();
+            for i in 0..inputs_clone.max_id() {
                 if (i % THREADS) == thread_i {
-                    let ast = abc_to_ast(content);
-                    partition_result.insert(*i, ast);
+                    if let Some(content) = inputs_clone.get(i) {
+                        let ast = abc_to_ast(&content);
+                        partition_result.insert(i, ast);
+                    }
                 }
             }
 

@@ -5,6 +5,7 @@ use representations;
 use search;
 use std::collections::HashMap;
 use std::env;
+use storage;
 use tune_ast_three;
 use typeset;
 
@@ -20,10 +21,10 @@ use tiny_http::{Header, Request, Response, Server, StatusCode};
 const DEFAULT_ROWS: usize = 30;
 const MAX_ROWS: usize = 1000;
 
-fn abc(groups: &regex::Captures, searcher: &search::Search) -> Response<Cursor<Vec<u8>>> {
+fn abc(groups: &regex::Captures, abc_cache: &mut storage::ABCCache) -> Response<Cursor<Vec<u8>>> {
     match groups.get(1) {
         Some(id) => match id.as_str().parse::<u32>() {
-            Ok(id) => match searcher.abcs.get(&id) {
+            Ok(id) => match abc_cache.get(id) {
                 Some(content) => {
                     Response::from_string(content.as_str()).with_status_code(StatusCode(200))
                 }
@@ -39,12 +40,12 @@ fn abc(groups: &regex::Captures, searcher: &search::Search) -> Response<Cursor<V
     }
 }
 
-fn svg(groups: &regex::Captures, searcher: &search::Search) -> Response<Cursor<Vec<u8>>> {
+fn svg(groups: &regex::Captures, abc_cache: &mut storage::ABCCache) -> Response<Cursor<Vec<u8>>> {
     match groups.get(1) {
         Some(id) => {
             match id.as_str().parse::<u32>() {
                 Ok(id) => {
-                    match searcher.abcs.get(&id) {
+                    match abc_cache.get(id) {
                         Some(content) => {
                             // TODO AST already exists?
                             let ast = representations::abc_to_ast(&content);
@@ -70,7 +71,7 @@ fn svg(groups: &regex::Captures, searcher: &search::Search) -> Response<Cursor<V
     }
 }
 
-fn search(request: &Request, searcher: &search::Search) -> Response<Cursor<Vec<u8>>> {
+fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
     let base = Url::parse("http://0.0.0.0/").unwrap();
 
     match Url::join(&base, request.url()) {
@@ -153,7 +154,7 @@ fn search(request: &Request, searcher: &search::Search) -> Response<Cursor<Vec<u
     }
 }
 
-pub fn main(searcher: &search::Search) {
+pub fn main(searcher: &search::SearchEngine) {
     let re_abc = regex::Regex::new(r"/abc/(\d+)").unwrap();
     let re_svg = regex::Regex::new(r"/svg/(\d+)").unwrap();
     let re_search = regex::Regex::new(r"/search").unwrap();
@@ -169,11 +170,14 @@ pub fn main(searcher: &search::Search) {
 
     let server = Server::http(bind).unwrap();
 
+    // Create a local mutable copy.
+    let mut abc_cache = (*searcher.abcs).clone();
+
     for request in server.incoming_requests() {
         let response: Response<_> = if let Some(groups) = re_abc.captures(request.url()) {
-            abc(&groups, &searcher)
+            abc(&groups, &mut abc_cache)
         } else if let Some(groups) = re_svg.captures(request.url()) {
-            svg(&groups, &searcher)
+            svg(&groups, &mut abc_cache)
         } else if let Some(groups) = re_search.captures(request.url()) {
             search(&request, &searcher)
         } else {

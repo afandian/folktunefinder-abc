@@ -42,6 +42,7 @@ fn get_stdin() -> String {
     buffer
 }
 
+// Construct a path for the Clusters file from config.
 pub fn clusters_path() -> Option<PathBuf> {
     let key = "BASE";
     match env::var(key) {
@@ -49,6 +50,21 @@ pub fn clusters_path() -> Option<PathBuf> {
             let mut path = PathBuf::new();
             path.push(&base);
             path.push("clusters");
+
+            Some(path)
+        }
+        _ => None,
+    }
+}
+
+// Construct a path for the Tune Cache from config.
+fn get_tune_cache_path() -> Option<PathBuf> {
+    let key = "BASE";
+    match env::var(key) {
+        Ok(base) => {
+            let mut path = PathBuf::new();
+            path.push(&base);
+            path.push("tunecache");
 
             Some(path)
         }
@@ -116,26 +132,72 @@ fn main_typeset() {
     println!("{}", svg);
 }
 
+// Scan ABCs into tunecache.
 fn main_scan() {
-    eprintln!("Start scan...");
-
-    let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
+    let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
     let base_path = env::var("BASE").expect("Base directory config not supplied.");
 
-    let mut tune_cache = storage::load(&tune_cache_path);
-    storage::scan(&mut tune_cache, &base_path);
+    eprintln!("Refreshing tunecache...");
+    let mut abcs =
+        storage::ABCCache::new(tune_cache_path, storage::CacheBehaviour::ReadWrite).unwrap();
+    eprintln!("Loading cache...");
+    abcs.load_cache();
+    eprintln!("Scanning ABC files...");
+    abcs.scan_dir(&base_path);
+    eprintln!("Saving tunecache...");
+    abcs.flush();
+    eprintln!("Done!");
+}
 
-    storage::save(&tune_cache, &tune_cache_path);
+// Validate the tunecache file's integrity.
+fn main_validate() {
+    let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
+
+    eprintln!("Load read-only...");
+    let mut read_only_abcs =
+        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadOnly).unwrap();
+    read_only_abcs.load_cache();
+
+    eprintln!("Load read-write...");
+    let mut read_write_abcs =
+        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
+            .unwrap();
+    read_write_abcs.load_cache();
+
+    eprintln!("Compare...");
+    let max_id = read_write_abcs.max_id();
+    let mut errs = 0;
+    for tune_id in 0..max_id + 1 {
+        let rw_str_value = read_write_abcs.get(tune_id);
+        let ro_str_value = read_only_abcs.get(tune_id);
+
+        let ok = rw_str_value == ro_str_value;
+
+        if !ok {
+            eprintln!("Tune: {}", tune_id);
+            eprintln!("RW val: {:?}", rw_str_value);
+            eprintln!("RO val: {:?}", ro_str_value);
+            errs += 1;
+        }
+    }
+
+    eprintln!("{} errors", errs);
 }
 
 fn main_server_new() {}
 
 fn main_server() {
     eprintln!("Server loading ABCs...");
-    let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
-    let tune_cache = storage::load(&tune_cache_path);
+    let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
 
-    // Load clusters outside the Search engine object as we might want to swap in different ones.
+    // ReadOnly vs ReadWrite has performance implications. When making substantial changes,
+    // profile both.
+    let mut abc_cache =
+        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
+            .unwrap();
+    abc_cache.load_cache();
+
+    // Load clusters outside the SearchEngine engine object as we might want to swap in different ones.
     eprintln!("Server loading clusters...");
     let groups = if let Some(path) = clusters_path() {
         relations::Clusters::load(&path)
@@ -146,22 +208,25 @@ fn main_server() {
 
     eprintln!("Start server");
 
-    let searcher = search::Search::new(tune_cache, groups);
+    let searcher = search::SearchEngine::new(abc_cache, groups);
 
     server::main(&searcher);
 }
 
 // Analyze and cluster tunes into groups, save cluster info to disk.
 // Work in progress.
-// TODO maybe use the Search object now?
+// TODO maybe use the SearchEngine object now?
 fn main_cluster_preprocess() {
     eprintln!("Pre-process clusters.");
 
     eprintln!("Load...");
-    let tune_cache_path = storage::tune_cache_path().expect("Base directory config not supplied.");
-    let abcs = storage::load(&tune_cache_path);
+    let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
+    let mut abcs =
+        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
+            .unwrap();
+    abcs.load_cache();
 
-    let max_tune_id = storage::max_id(&abcs);
+    let max_tune_id = abcs.max_id();
     eprintln!("Max tune id: {}", max_tune_id);
 
     eprintln!("Parse...");
@@ -242,6 +307,7 @@ fn main_unrecognised() {
     eprintln!(
         "Unrecognised command. Try:
  - scan - Scan tune DB individual tunes into a single $BASE/tunecache file
+ - validate - Validate integrity of the tunecache file.
  - cluster - Using the tunecache, cluster tunes and sage to $BASE/clusters file.
  - server - Run the server. run 'scan' and 'cluster' first!
  - check - Parse an ABC file from STDIN and check to see if it parses and get error messages.
@@ -256,6 +322,7 @@ fn main() {
     match args.nth(1) {
         Some(first) => match first.as_ref() {
             "scan" => main_scan(),
+            "validate" => main_validate(),
             "server" => main_server(),
             "cluster" => main_cluster_preprocess(),
             "check" => main_check(),
