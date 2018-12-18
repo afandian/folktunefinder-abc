@@ -18,9 +18,6 @@ use search::Query;
 use std::io::Cursor;
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
-const DEFAULT_ROWS: usize = 30;
-const MAX_ROWS: usize = 1000;
-
 fn abc(groups: &regex::Captures, abc_cache: &mut storage::ABCCache) -> Response<Cursor<Vec<u8>>> {
     match groups.get(1) {
         Some(id) => match id.as_str().parse::<u32>() {
@@ -82,82 +79,35 @@ fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor
         Ok(url) => {
             let mut params: HashMap<_, _> = url.query_pairs().into_owned().collect();
 
-            let offset: usize = match params.get("offset") {
-                Some(v) => match v.parse::<usize>() {
-                    Ok(v) => v,
-                    Err(_) => {
-                        return Response::from_string("Invalid offset...")
-                            .with_status_code(StatusCode(400))
-                    }
-                },
-                _ => 0,
-            };
+            match search::parse_query(&params) {
+                Err(message) => Response::from_string(message).with_status_code(StatusCode(400)),
+                Ok(query) => {
+                    let (num_total_results, num_unique_results, results) = searcher.search(&query);
 
-            let rows: usize = match params.get("rows") {
-                Some(v) => match v.parse::<usize>() {
-                    Ok(v) if (v <= MAX_ROWS) => v,
-                    Ok(v) => {
-                        return Response::from_string("Too many rows requested")
-                            .with_status_code(StatusCode(400))
-                    }
-                    Err(_) => {
-                        return Response::from_string("Invalid rows...")
-                            .with_status_code(StatusCode(400))
-                    }
-                },
-                _ => DEFAULT_ROWS,
-            };
+                    let result_body = serde_json::json!({
+                        "query": query,
+                        "total": num_total_results,
+                        "unique": num_unique_results,
+                        "results": results,
+                    });
 
-            let melody: Option<Vec<u8>> = match params.get("melody") {
-                // We can't split nothing, giving spurious errors when the param is present but empty.
-                Some(v) if v.len() == 0 => None,
-                Some(v) => {
-                    // The Result is passed out to the result of the iterator.
-                    let melody: Result<Vec<_>, _> = v.split(",").map(|s| s.parse::<u8>()).collect();
-
-                    let melody = match melody {
-                        Ok(numbers) => numbers,
-                        Err(err) => {
-                            eprintln!("Error from {:?} is {:?}", v, err);
-                            return Response::from_string("Invalid melody...")
-                                .with_status_code(StatusCode(400));
-                        }
-                    };
-
-                    Some(melody)
+                    Response::from_string(result_body.to_string())
+                        .with_status_code(StatusCode(200))
+                        .with_header(
+                            Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                                .unwrap(),
+                        )
                 }
-                _ => None,
-            };
-
-            let query = Query {
-                melody,
-                offset,
-                rows,
-            };
-
-            let results = searcher.search(&query);
-            let total = results.total();
-            let decorated_results = search::export_results(&results, &searcher, offset, rows);
-
-            let result_body = serde_json::json!({
-                "query": query,
-                "total": total,
-                "results": decorated_results,
-            });
-
-            Response::from_string(result_body.to_string())
-                .with_status_code(StatusCode(200))
-                .with_header(
-                    Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
-                )
+            }
         }
     }
 }
 
-pub fn main(searcher: &search::SearchEngine) {
-    let re_abc = regex::Regex::new(r"/abc/(\d+)").unwrap();
-    let re_svg = regex::Regex::new(r"/svg/(\d+)").unwrap();
-    let re_search = regex::Regex::new(r"/search").unwrap();
+pub fn main(mut searcher: search::SearchEngine) {
+    // There have been folktunefinders before.
+    let re_abc = regex::Regex::new(r"/v3/tunes/(\d+).abc").unwrap();
+    let re_svg = regex::Regex::new(r"/v3/tunes/(\d+).svg").unwrap();
+    let re_search = regex::Regex::new(r"/v3/tunes/search").unwrap();
 
     let key = "HTTP_BIND";
     let bind = match env::var(key) {
@@ -179,7 +129,7 @@ pub fn main(searcher: &search::SearchEngine) {
         } else if let Some(groups) = re_svg.captures(request.url()) {
             svg(&groups, &mut abc_cache)
         } else if let Some(groups) = re_search.captures(request.url()) {
-            search(&request, &searcher)
+            search(&request, &mut searcher)
         } else {
             Response::from_string("Didn't recognise that.").with_status_code(StatusCode(404))
         };

@@ -209,8 +209,7 @@ fn main_server() {
     eprintln!("Start server");
 
     let searcher = search::SearchEngine::new(abc_cache, groups);
-
-    server::main(&searcher);
+    server::main(searcher);
 }
 
 // Analyze and cluster tunes into groups, save cluster info to disk.
