@@ -23,6 +23,7 @@
 //!  -
 
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -77,6 +78,12 @@ impl ResultSet {
     pub fn total(&self) -> usize {
         self.results.len()
     }
+
+    // Filter results in this set by intersecting with the supplied filter.
+    pub fn filter_by(&mut self, filter_set: &ResultSet) {
+        self.results
+            .retain(|&id, _| filter_set.results.contains_key(&id));
+    }
 }
 
 // A Generator supplies a weighted result set. Only one generator per result.
@@ -102,7 +109,13 @@ pub enum Generator {
 // All terms are ANDed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Filter {
-    // TODO
+    pub features: Vec<(String, String)>,
+}
+
+impl Filter {
+    pub fn has_filters(&self) -> bool {
+        self.features.len() > 0
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -131,147 +144,11 @@ pub struct Query {
     pub selection: Selection,
 }
 
-fn parse_filter(params: &HashMap<String, String>) -> Result<Filter, String> {
-    // TODO we don't have any yet.
-    Ok(Filter {})
-}
-
 const DEFAULT_ROWS: usize = 30;
 const MAX_ROWS: usize = 1000;
 
 // One octave above and below key note.
 const HISTOGRAM_LENGTH: usize = 25;
-
-fn parse_selection(params: &HashMap<String, String>) -> Result<Selection, String> {
-    let offset: usize = match params.get("offset") {
-        Some(v) => match v.parse::<usize>() {
-            Ok(v) => v,
-            Err(_) => return Err("Invalid value for 'offset'.".to_string()),
-        },
-        _ => 0,
-    };
-
-    let rows: usize = match params.get("rows") {
-        Some(v) => match v.parse::<usize>() {
-            Ok(v) if (v <= MAX_ROWS) => v,
-            Ok(v) => return Err("Too many rows requested".to_string()),
-            Err(_) => return Err("Invalid value for 'rows'".to_string()),
-        },
-        _ => DEFAULT_ROWS,
-    };
-
-    let rollup = match params.get("rollup") {
-        Some(val) => match val.as_ref() {
-            "true" => true,
-            "false" => false,
-            _ => return Err("Invalid value for 'rollup'".to_string()),
-        },
-        _ => false,
-    };
-
-    let include_abc = match params.get("include_abc") {
-        Some(val) => match val.as_ref() {
-            "true" => true,
-            "false" => false,
-            _ => return Err("Invalid value for 'include_abc'".to_string()),
-        },
-        _ => false,
-    };
-
-    let include_proxy = match params.get("include_proxy") {
-        Some(val) => match val.as_ref() {
-            "true" => true,
-            "false" => false,
-            _ => return Err("Invalid value for 'include_proxy'".to_string()),
-        },
-        _ => false,
-    };
-
-    Ok(Selection {
-        offset,
-        rows,
-        rollup,
-        include_abc,
-        include_proxy,
-    })
-}
-
-fn parse_generator(params: &HashMap<String, String>) -> Result<Generator, String> {
-    // This argument is given as absolute pitches, at least for now.
-    // Would be more consistent to convert it to intervals prior to querying API perhaps...
-    if let Some(val) = params.get("interval_ngram") {
-        match val.split(",").map(|s| s.parse::<u8>()).collect() {
-            Ok(value) => return Ok(Generator::IntervalNGram(value)),
-            Err(_) => return Err("Invalid value given for 'interval_ngram'".to_string()),
-        }
-    }
-
-    if let Some(val) = params.get("degree_ngram") {
-        match val.split(",").map(|s| s.parse::<u8>()).collect() {
-            Ok(value) => return Ok(Generator::DegreeNGram(value)),
-            Err(_) => return Err("Invalid value given for 'degree_ngram'".to_string()),
-        }
-    }
-
-    if let Some(val) = params.get("interval_histogram") {
-        let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
-        match result {
-            Ok(value) => {
-                if (value.len() == HISTOGRAM_LENGTH) {
-                    return Ok(Generator::IntervalHistogram(value));
-                } else {
-                    return Err(format!(
-                        "Invalid length for 'interval_histogram'. Must be exactly {}",
-                        HISTOGRAM_LENGTH
-                    ));
-                }
-            }
-            Err(_) => return Err("Invalid value given for 'interval_histogram'".to_string()),
-        }
-    }
-
-    if let Some(val) = params.get("degree_histogram") {
-        let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
-        match result {
-            Ok(value) => if (value.len() == HISTOGRAM_LENGTH) {
-                return Ok(Generator::DegreeHistogram(value));
-            } else {
-                return Err(format!(
-                    "Invalid length for 'interval_histogram'. Must be exactly {}",
-                    HISTOGRAM_LENGTH
-                ));
-            },
-            Err(_) => return Err("Invalid value given for 'interval_histogram'".to_string()),
-        }
-    }
-
-    Ok(Generator::All)
-}
-
-pub fn parse_query(params: &HashMap<String, String>) -> Result<Query, String> {
-    eprintln!("Search query: {:?}", params);
-
-    let filter = match parse_filter(params) {
-        Ok(filter) => filter,
-        Err(message) => return Err(message),
-    };
-
-    let selection = match parse_selection(params) {
-        Ok(selection) => selection,
-        Err(message) => return Err(message),
-    };
-
-    let generator = match parse_generator(params) {
-        Ok(generator) => generator,
-        Err(message) => return Err(message),
-    };
-
-    Ok(Query {
-        filter,
-        selection,
-        generator,
-    })
-}
 
 // A search engine.
 // TODO Trade off storage and pre-parsing of ASTs with RAM usage vs time to fetch / reconstruct data.
@@ -297,6 +174,9 @@ pub struct SearchEngine {
     // TODO normalize this to the other nomenclature 0f interval / degree + histogram / ngram.
     interval_term_vsm: relations::IntervalWindowBinaryVSM,
     //  TODO Text VSM.
+
+    // Cache of all known features.
+    all_features_cached: HashMap<String, Vec<String>>,
 }
 
 impl SearchEngine {
@@ -318,13 +198,169 @@ impl SearchEngine {
         // TODO build text index.
         // TODO build synonyms and development tools for features, specifically Rhythm.
 
+        // Keep a copy of all known features.
+        let all_features_cached = features.all_features();
+
         SearchEngine {
             clusters,
             asts,
             features,
+            all_features_cached,
             abcs: abcs_arc,
             interval_term_vsm,
         }
+    }
+
+    fn parse_filter(&self, params: &Vec<(String, String)>) -> Result<Filter, String> {
+        // The syntax depends on the features we've extracted from the corpus. Whilst the set of
+        // feature types is hard-coded, it's best to make the parsing data-driven. This couples the
+        // search to the present corpus not the code.
+
+        // Filter and take a copy of those filter key value pairs that correspond to known features.
+        let relevant: Vec<(String, String)> = params
+            .iter()
+            .filter_map(|(k, v)| {
+                if self.all_features_cached.contains_key(k) {
+                    Some((k.to_string(), v.to_string()))
+                } else {
+                    None
+                }
+            }).collect();
+
+        Ok(Filter { features: relevant })
+    }
+
+    fn parse_selection(&self, params: &HashMap<String, String>) -> Result<Selection, String> {
+        let offset: usize = match params.get("offset") {
+            Some(v) => match v.parse::<usize>() {
+                Ok(v) => v,
+                Err(_) => return Err("Invalid value for 'offset'.".to_string()),
+            },
+            _ => 0,
+        };
+
+        let rows: usize = match params.get("rows") {
+            Some(v) => match v.parse::<usize>() {
+                Ok(v) if (v <= MAX_ROWS) => v,
+                Ok(v) => return Err("Too many rows requested".to_string()),
+                Err(_) => return Err("Invalid value for 'rows'".to_string()),
+            },
+            _ => DEFAULT_ROWS,
+        };
+
+        let rollup = match params.get("rollup") {
+            Some(val) => match val.as_ref() {
+                "true" => true,
+                "false" => false,
+                _ => return Err("Invalid value for 'rollup'".to_string()),
+            },
+            _ => false,
+        };
+
+        let include_abc = match params.get("include_abc") {
+            Some(val) => match val.as_ref() {
+                "true" => true,
+                "false" => false,
+                _ => return Err("Invalid value for 'include_abc'".to_string()),
+            },
+            _ => false,
+        };
+
+        let include_proxy = match params.get("include_proxy") {
+            Some(val) => match val.as_ref() {
+                "true" => true,
+                "false" => false,
+                _ => return Err("Invalid value for 'include_proxy'".to_string()),
+            },
+            _ => false,
+        };
+
+        Ok(Selection {
+            offset,
+            rows,
+            rollup,
+            include_abc,
+            include_proxy,
+        })
+    }
+
+    fn parse_generator(&self, params: &HashMap<String, String>) -> Result<Generator, String> {
+        // This argument is given as absolute pitches, at least for now.
+        // Would be more consistent to convert it to intervals prior to querying API perhaps...
+        if let Some(val) = params.get("interval_ngram") {
+            match val.split(",").map(|s| s.parse::<u8>()).collect() {
+                Ok(value) => return Ok(Generator::IntervalNGram(value)),
+                Err(_) => return Err("Invalid value given for 'interval_ngram'".to_string()),
+            }
+        }
+
+        if let Some(val) = params.get("degree_ngram") {
+            match val.split(",").map(|s| s.parse::<u8>()).collect() {
+                Ok(value) => return Ok(Generator::DegreeNGram(value)),
+                Err(_) => return Err("Invalid value given for 'degree_ngram'".to_string()),
+            }
+        }
+
+        if let Some(val) = params.get("interval_histogram") {
+            let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
+            match result {
+                Ok(value) => {
+                    if (value.len() == HISTOGRAM_LENGTH) {
+                        return Ok(Generator::IntervalHistogram(value));
+                    } else {
+                        return Err(format!(
+                            "Invalid length for 'interval_histogram'. Must be exactly {}",
+                            HISTOGRAM_LENGTH
+                        ));
+                    }
+                }
+                Err(_) => return Err("Invalid value given for 'interval_histogram'".to_string()),
+            }
+        }
+
+        if let Some(val) = params.get("degree_histogram") {
+            let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
+            match result {
+                Ok(value) => if (value.len() == HISTOGRAM_LENGTH) {
+                    return Ok(Generator::DegreeHistogram(value));
+                } else {
+                    return Err(format!(
+                        "Invalid length for 'interval_histogram'. Must be exactly {}",
+                        HISTOGRAM_LENGTH
+                    ));
+                },
+                Err(_) => return Err("Invalid value given for 'interval_histogram'".to_string()),
+            }
+        }
+
+        Ok(Generator::All)
+    }
+
+    pub fn parse_query(&self, params: Vec<(String, String)>) -> Result<Query, String> {
+        eprintln!("Search query: {:?}", &params);
+
+        let mut params_map: HashMap<_, _> = params.clone().into_iter().collect();
+
+        let filter = match self.parse_filter(&params) {
+            Ok(filter) => filter,
+            Err(message) => return Err(message),
+        };
+
+        let selection = match self.parse_selection(&params_map) {
+            Ok(selection) => selection,
+            Err(message) => return Err(message),
+        };
+
+        let generator = match self.parse_generator(&params_map) {
+            Ok(generator) => generator,
+            Err(message) => return Err(message),
+        };
+
+        Ok(Query {
+            filter,
+            selection,
+            generator,
+        })
     }
 
     pub fn search(
@@ -339,7 +375,7 @@ impl SearchEngine {
     ) {
         // First generate a weighted set.
 
-        let generated = match query.generator {
+        let mut generated = match query.generator {
             // TODO should be all
             Generator::All => {
                 let mut results = ResultSet::new();
@@ -361,14 +397,23 @@ impl SearchEngine {
             _ => ResultSet::new(),
         };
 
-        // Then generate a filter set.
-        let filtered = generated;
-        // TODO
+        // Then generate a filter set. This is all docs that match the filter.
+        // TODO it may be more efficient to build this as a predicate that can be supplied to the
+        // generators. Really depensd on the balance of usage, and whether generator or filter sets
+        // are larger.
+        let filtered_results = self.generate_filter_resultset(query);
+
+        // Apply filter to the generated result set.
+        // If no filters were supplied, don't perform the filter.
+        // This is important because we need to tell the difference between an empty set because
+        // there were no matches vs an empty set becuase there was no filter.
+        if query.filter.has_filters() {
+            generated.filter_by(&filtered_results);
+        };
 
         // Then do selection.
-
         let mut results: Vec<DecoratedResult> = vec![];
-        for (id, score) in filtered.results.iter() {
+        for (id, score) in generated.results.iter() {
             let mut result = DecoratedResult {
                 titles: vec![],
                 id: *id,
@@ -437,6 +482,53 @@ impl SearchEngine {
         }
 
         (total_results, num_unique_results, results)
+    }
+
+    // Produce a result set by applying filters.
+    // These are ORed within a type, then ANDed.
+    fn generate_filter_resultset(&self, query: &Query) -> ResultSet {
+        // Into type -> [(type, val)...]
+        let mut groups: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        for (typ, val) in query.filter.features.iter() {
+            // We still want to store these as tuples for later use.
+            let tuple = (typ.to_string(), val.to_string());
+            match groups.entry(typ.to_string()) {
+                Entry::Occupied(o) => {
+                    o.into_mut().push(tuple);
+                }
+                Entry::Vacant(v) => {
+                    v.insert(vec![tuple]);
+                }
+            };
+        }
+
+        let mut results: Option<ResultSet> = None;
+
+        for (typ, vals) in groups.iter() {
+            // OR within the type.
+            let group_result = self.features.vsm.search_by_terms(
+                vals.to_vec(),
+                0.0,
+                relations::ScoreNormalization::DocA,
+            );
+
+            // First time use this group's results.
+            // Subsequently, perform AND with previous groups.
+            results = match results {
+                Some(mut r) => {
+                    r.filter_by(&group_result);
+                    Some(r)
+                }
+                None => Some(group_result),
+            };
+        }
+
+        results.unwrap_or(ResultSet::new())
+    }
+
+    // Return groups of features that we recognise.
+    pub fn get_features(&self) -> &HashMap<String, Vec<String>> {
+        &self.all_features_cached
     }
 }
 

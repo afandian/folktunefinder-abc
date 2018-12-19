@@ -364,6 +364,7 @@ where
         self.docs_terms_literal[tune_id].push(term.clone());
     }
 
+    // TODO can terms be a ref?
     pub fn search_by_terms(
         &self,
         terms: Vec<K>,
@@ -371,7 +372,11 @@ where
         normalization: ScoreNormalization,
     ) -> ResultSet {
         eprintln!("Search by terms: {:?}", terms);
+
+        // Initialize a bit vector.
         let mut words = vec![0; self.word_capacity];
+
+        // Set bits for terms.
         for term in terms.iter() {
             // If the term doesn't exist, just ignore.
             if let Some(term_id) = self.terms.get(&term) {
@@ -525,12 +530,40 @@ impl FeaturesBinaryVSM {
         all_terms.sort();
         let mut prev_feature_type = &"".to_string();
         for (feature_type, feature_value) in all_terms.iter() {
+            // In stream of (type, feature) Detect change in type.
             if feature_type != prev_feature_type {
                 eprintln!("{}", feature_type);
                 prev_feature_type = feature_type;
             }
             eprintln!("  {}", feature_value);
         }
+    }
+
+    // Return structure of all known feature values, grouped by type.
+    pub fn all_features(&self) -> HashMap<String, Vec<String>> {
+        let mut results: HashMap<String, Vec<String>> = HashMap::new();
+
+        let mut all_terms: Vec<&(String, String)> = self.vsm.terms.keys().collect();
+        all_terms.sort();
+        let mut prev_feature_type = &"".to_string();
+        let mut vals = vec![];
+        for (feature_type, feature_value) in all_terms.iter() {
+            // In stream of (type, feature) Detect change in type.
+            if feature_type != prev_feature_type {
+                if vals.len() > 0 {
+                    results.insert(prev_feature_type.to_string(), vals);
+                }
+                vals = vec![];
+                prev_feature_type = feature_type;
+            }
+
+            vals.push(feature_value.to_string());
+        }
+
+        if vals.len() > 0 {
+            results.insert(prev_feature_type.to_string(), vals);
+        }
+        results
     }
 }
 

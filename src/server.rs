@@ -77,9 +77,9 @@ fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor
             Response::from_string("Invalid URL...").with_status_code(StatusCode(400))
         }
         Ok(url) => {
-            let mut params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+            let mut params: Vec<(String, String)> = url.query_pairs().into_owned().collect();
 
-            match search::parse_query(&params) {
+            match searcher.parse_query(params) {
                 Err(message) => Response::from_string(message).with_status_code(StatusCode(400)),
                 Ok(query) => {
                     let (num_total_results, num_unique_results, results) = searcher.search(&query);
@@ -103,11 +103,22 @@ fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor
     }
 }
 
+fn features(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
+    let result = searcher.get_features();
+
+    let body = serde_json::json!(result);
+
+    Response::from_string(body.to_string())
+        .with_status_code(StatusCode(200))
+        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+}
+
 pub fn main(mut searcher: search::SearchEngine) {
     // There have been folktunefinders before.
     let re_abc = regex::Regex::new(r"/v3/tunes/(\d+).abc").unwrap();
     let re_svg = regex::Regex::new(r"/v3/tunes/(\d+).svg").unwrap();
     let re_search = regex::Regex::new(r"/v3/tunes/search").unwrap();
+    let re_features = regex::Regex::new(r"/v3/features").unwrap();
 
     let key = "HTTP_BIND";
     let bind = match env::var(key) {
@@ -121,6 +132,8 @@ pub fn main(mut searcher: search::SearchEngine) {
     let server = Server::http(bind).unwrap();
 
     // Create a local mutable copy.
+    // TODO this is less than ideal, as it depends on the cache being constructed in ReadOnly mode.
+    // If not, this would double memory usage.
     let mut abc_cache = (*searcher.abcs).clone();
 
     for request in server.incoming_requests() {
@@ -130,6 +143,8 @@ pub fn main(mut searcher: search::SearchEngine) {
             svg(&groups, &mut abc_cache)
         } else if let Some(groups) = re_search.captures(request.url()) {
             search(&request, &mut searcher)
+        } else if let Some(groups) = re_features.captures(request.url()) {
+            features(&request, &mut searcher)
         } else {
             Response::from_string("Didn't recognise that.").with_status_code(StatusCode(404))
         };
