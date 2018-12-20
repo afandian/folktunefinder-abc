@@ -30,7 +30,7 @@ pub fn build_pitch_sequence(ast: &tune_ast_three::Tune) -> Vec<u8> {
             match token {
                 l::T::Note(note) => {
                     // TODO extras like accidentals etc.
-                    let music::Note(pitch, duration) = note;
+                    let music::Note(pitch, _duration) = note;
                     let midi_pitch = pitch.midi_pitch();
                     result.push(midi_pitch);
                 }
@@ -49,7 +49,7 @@ pub fn pitch_seq_to_intervals(pitches: &Vec<u8>) -> Vec<i16> {
     let mut last: i16 = 0;
     let mut first = true;
     for pitch in pitches.iter() {
-        if (first) {
+        if first {
             first = false;
         } else {
             let interval = (*pitch as i16) - last;
@@ -71,8 +71,8 @@ pub const HISTOGRAM_WIDTH: usize = HISTOGRAM_SIZE + HISTOGRAM_SIZE + 2;
 pub fn build_interval_histogram(pitches: &Vec<i16>) -> [f32; HISTOGRAM_WIDTH] {
     let mut histogram = [0.0; HISTOGRAM_WIDTH];
 
-    let max = HISTOGRAM_WIDTH as i16;
-    let min = HISTOGRAM_WIDTH as i16 * -1;
+    let _max = HISTOGRAM_WIDTH as i16;
+    let _min = HISTOGRAM_WIDTH as i16 * -1;
 
     for interval in pitches.iter() {
         // Clamp to range, saturating at each end.

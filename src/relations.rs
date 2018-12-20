@@ -1,6 +1,5 @@
 use std::usize;
 
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -14,7 +13,6 @@ use std::io::Write;
 use std::fs::File;
 use std::io::Read;
 
-use std::env;
 use std::path::PathBuf;
 
 use std::io::{BufReader, BufWriter};
@@ -372,12 +370,12 @@ where
 
         // Squirrel away a copy of this in the lookup table.
         // This is so we can use things like Strings, which can't be simply copied.
-        let mut term_id = self.get_term_id(term.clone().to_owned());
+        let term_id = self.get_term_id(term.clone().to_owned());
 
         // Wrap round to fit in the table.
         let bit_i = term_id % self.bit_capacity;
         let (word_offset, bit_offset) = self.get_word_bit(bit_i);
-        self.docs_terms[tune_id * self.word_capacity + word_offset] |= (1 << bit_offset);
+        self.docs_terms[tune_id * self.word_capacity + word_offset] |= 1 << bit_offset;
         self.docs_terms_exact[tune_id].insert(term_id);
     }
 
@@ -403,7 +401,7 @@ where
             if let Some(term_id) = self.terms.get(&term) {
                 let bit_i = term_id % self.bit_capacity;
                 let (word_offset, bit_offset) = self.get_word_bit(bit_i);
-                words[word_offset] |= (1 << bit_offset);
+                words[word_offset] |= 1 << bit_offset;
 
                 if exact {
                     terms_set.insert(*term_id);
@@ -477,8 +475,8 @@ where
                             a_term_ids.intersection(b_term_ids).count() as u32;
                         let exact_score =
                             normalization.score(intersecting_values, a_bitcount, b_bitcount);
-                        //                        eprintln!("Tune: {} score: {} exact score: {}", &b, &score, &exact_score);
-                        if (intersecting_values > 0 && score >= cutoff) {
+
+                        if intersecting_values > 0 && score >= cutoff {
                             results.add(b, exact_score);
                         }
                     }
@@ -496,7 +494,7 @@ where
         cutoff: f32,
         normalization: ScoreNormalization,
     ) -> ResultSet {
-        let mut results = ResultSet::new();
+        let results = ResultSet::new();
 
         if a > (self.top_id) {
             return results;
@@ -657,7 +655,7 @@ impl FeaturesBinaryVSM {
         // No limiting just yet. With current data, a full page of all facet values is 200Kb,
         // which is fine. If this gets fed into a user interface, some kind of limiting should
         // happen downstream.
-        for (k, v) in results.iter_mut() {
+        for (_k, v) in results.iter_mut() {
             v.sort_by(|(_, cnt_a), (_, cnt_b)| cnt_b.cmp(cnt_a));
         }
 

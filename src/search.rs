@@ -35,10 +35,6 @@ use tune_ast_three;
 
 use std::sync::Arc;
 
-use serde;
-use serde_derive;
-use serde_json;
-
 // Simple lightweight tune ID to weight for collecting results.
 #[derive(Debug)]
 pub struct ResultSet {
@@ -67,7 +63,7 @@ impl ResultSet {
         }
 
         // Sort descending by score.
-        result.sort_by(|(a_id, a_score), (b_id, b_score)| {
+        result.sort_by(|(_a_id, a_score), (_b_id, b_score)| {
             b_score.partial_cmp(a_score).unwrap_or(Ordering::Equal)
         });
 
@@ -243,7 +239,7 @@ impl SearchEngine {
         let rows: usize = match params.get("rows") {
             Some(v) => match v.parse::<usize>() {
                 Ok(v) if (v <= MAX_ROWS) => v,
-                Ok(v) => return Err("Too many rows requested".to_string()),
+                Ok(_v) => return Err("Too many rows requested".to_string()),
                 Err(_) => return Err("Invalid value for 'rows'".to_string()),
             },
             _ => DEFAULT_ROWS,
@@ -306,7 +302,7 @@ impl SearchEngine {
             let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
             match result {
                 Ok(value) => {
-                    if (value.len() == HISTOGRAM_LENGTH) {
+                    if value.len() == HISTOGRAM_LENGTH {
                         return Ok(Generator::IntervalHistogram(value));
                     } else {
                         return Err(format!(
@@ -322,7 +318,7 @@ impl SearchEngine {
         if let Some(val) = params.get("degree_histogram") {
             let result: Result<Vec<_>, _> = val.split(",").map(|s| s.parse::<f32>()).collect();
             match result {
-                Ok(value) => if (value.len() == HISTOGRAM_LENGTH) {
+                Ok(value) => if value.len() == HISTOGRAM_LENGTH {
                     return Ok(Generator::DegreeHistogram(value));
                 } else {
                     return Err(format!(
@@ -340,7 +336,7 @@ impl SearchEngine {
     pub fn parse_query(&self, params: Vec<(String, String)>) -> Result<Query, String> {
         eprintln!("Search query: {:?}", &params);
 
-        let mut params_map: HashMap<_, _> = params.clone().into_iter().collect();
+        let params_map: HashMap<_, _> = params.clone().into_iter().collect();
 
         let filter = match self.parse_filter(&params) {
             Ok(filter) => filter,
@@ -515,7 +511,7 @@ impl SearchEngine {
 
         let mut results: Option<ResultSet> = None;
 
-        for (typ, vals) in groups.iter() {
+        for (_typ, vals) in groups.iter() {
             // OR within the type.
             let group_result = self.features.vsm.search_by_terms(
                 vals.to_vec(),

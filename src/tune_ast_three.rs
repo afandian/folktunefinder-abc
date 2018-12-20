@@ -26,7 +26,7 @@ impl Tune {
 /// Read from a Lexer and build a new AST.
 pub fn read_from_lexer(lexer: l::Lexer) -> Tune {
     // Every Entity has an index.
-    let mut i = 0;
+    let _i = 0;
 
     let mut tune = Tune::new();
 

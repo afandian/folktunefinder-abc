@@ -184,8 +184,6 @@ fn main_validate() {
     eprintln!("{} errors", errs);
 }
 
-fn main_server_new() {}
-
 fn main_server() {
     eprintln!("Server loading ABCs...");
     let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
@@ -244,7 +242,7 @@ fn main_cluster_preprocess() {
     const THREADS: u32 = 4;
 
     let start = SystemTime::now();
-    let mut interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
+    let interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
     let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
 
     let vsm_arc = Arc::new(interval_term_vsm);
@@ -263,7 +261,7 @@ fn main_cluster_preprocess() {
                         .search_by_id(a as usize, 0.8, relations::ScoreNormalization::Max)
                         .results();
 
-                    for (b, score) in results {
+                    for (b, _score) in results {
                         groups.add(a as usize, b as usize);
                     }
 
@@ -280,7 +278,7 @@ fn main_cluster_preprocess() {
                 }
             }
 
-            tx_clone.send(groups);
+            tx_clone.send(groups).unwrap();
         });
     }
 

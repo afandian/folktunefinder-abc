@@ -142,7 +142,6 @@ impl<'a> Context<'a> {
     }
 
     /// Take the first n characters, if we have them.
-    #[test]
     fn take(&self, n: usize) -> Option<(Context<'a>, &'a [char])> {
         if !self.has(n) {
             None
@@ -785,7 +784,7 @@ fn lex_note<'a>(ctx: Context<'a>) -> LexResult {
 }
 
 fn lex_rest<'a>(ctx: Context<'a>) -> LexResult {
-    let (ctx, visible) = match ctx.first() {
+    let (ctx, _visible) = match ctx.first() {
         Some((ctx, 'z')) | Some((ctx, 'Z')) => (ctx, true),
         Some((ctx, 'x')) | Some((ctx, 'X')) => (ctx, false),
         _ => (ctx, true),
@@ -2320,7 +2319,7 @@ K:    GFmaj
         let input = &(string_to_vec("[1".to_string()));
         let ctx = Context::new(input);
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => assert_eq!(n_time, 1),
+            (_ctx, Some(n_time)) => assert_eq!(n_time, 1),
             x => assert!(false, "Expected ntime got: {:?}", x),
         }
 
@@ -2328,7 +2327,7 @@ K:    GFmaj
         let input = &(string_to_vec("2".to_string()));
         let ctx = Context::new(input);
         match read_n_time(ctx) {
-            (ctx, Some(n_time)) => assert_eq!(n_time, 2),
+            (_ctx, Some(n_time)) => assert_eq!(n_time, 2),
             x => assert!(false, "Expected ntime got: {:?}", x),
         }
     }

@@ -159,7 +159,7 @@ impl Entity {
                 HEAD_WIDTH * 2.0 +
                     // Space for the dots.
                     match glyph {
-                        Some(music::DurationGlyph { shape, dots }) => HEAD_WIDTH * dots as f32,
+                        Some(music::DurationGlyph { shape: _, dots }) => HEAD_WIDTH * dots as f32,
                         _ => 0.0,
                     }
             }
@@ -185,7 +185,7 @@ impl Entity {
         match self.glyph {
             Glyph::NoteHead(position, duration) => {
                 match duration {
-                    Some(music::DurationGlyph { shape, dots }) => {
+                    Some(music::DurationGlyph { shape: _, dots: _ }) => {
                         let y = (LINES_IN_STAVE - position) as f32 * HEAD_HEIGHT;
 
                         // TODO switch on direction.
@@ -461,7 +461,7 @@ impl Stave {
             .sum();
 
         // TODO prevent divide by zero
-        let justifiable_scale =
+        let _justifiable_scale =
             (STAVE_WIDTH - (front_matter_width + end_matter_width)) / justifiable_width;
 
         let justifiable_scale = f32::min(STAVE_WIDTH / justifiable_width, MINIMUM_STAVE_SCALE);
@@ -572,7 +572,7 @@ pub fn typeset_from_ast(ast: &tune_ast_three::Tune) -> Page {
     let mut metre = music::Metre(4, 4);
 
     // TODO We only ever use treble clef at the moment.
-    let mut current_clef = music::Clef::treble();
+    let current_clef = music::Clef::treble();
 
     for ref token in ast.prelude.iter() {
         match *token {

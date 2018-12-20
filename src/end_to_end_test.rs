@@ -1,3 +1,4 @@
+#[cfg(test)]
 use representations;
 
 fn string_to_vec(input: String) -> Vec<char> {

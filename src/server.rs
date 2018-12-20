@@ -1,19 +1,12 @@
-use abc_lexer;
 use regex;
-use relations;
 use representations;
 use search;
-use std::collections::HashMap;
 use std::env;
 use storage;
-use tune_ast_three;
-use typeset;
 
 use url::Url;
 
 use serde_json;
-
-use search::Query;
 
 use std::io::Cursor;
 use tiny_http::{Header, Request, Response, Server, StatusCode};
@@ -105,7 +98,7 @@ fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor
     }
 }
 
-fn features(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
+fn features(_request: &Request, searcher: &search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
     let result = searcher.get_features();
 
     let body = serde_json::json!(result);
@@ -143,9 +136,9 @@ pub fn main(mut searcher: search::SearchEngine) {
             abc(&groups, &mut abc_cache)
         } else if let Some(groups) = re_svg.captures(request.url()) {
             svg(&groups, &mut abc_cache)
-        } else if let Some(groups) = re_search.captures(request.url()) {
+        } else if let Some(_groups) = re_search.captures(request.url()) {
             search(&request, &mut searcher)
-        } else if let Some(groups) = re_features.captures(request.url()) {
+        } else if let Some(_groups) = re_features.captures(request.url()) {
             features(&request, &mut searcher)
         } else {
             Response::from_string("Didn't recognise that.").with_status_code(StatusCode(404))

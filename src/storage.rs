@@ -179,15 +179,29 @@ impl ABCCache {
                             let mut string_buf = Vec::with_capacity(length);
                             string_buf.resize(length, 0x0);
 
-                            reader.read_exact(&mut string_buf);
-
-                            // End of file here is unexpected. Panic!
-                            let tune_string = String::from_utf8(string_buf).unwrap();
-                            self.string_cache.insert(tune_id, Arc::new(tune_string));
+                            match reader.read_exact(&mut string_buf) {
+                                Err(_) => {
+                                    eprintln!("Error! Tried to read invalid file offset.");
+                                }
+                                Ok(_) => {
+                                    match String::from_utf8(string_buf) {
+                                        Ok(tune_string) => {
+                                            {self.string_cache.insert(tune_id, Arc::new(tune_string));}
+                                        }
+                                        _ => eprintln!("Failed to read string buffer."),
+                                    };
+                                }
+                            };
                         }
                         CacheBehaviour::ReadOnly => {
                             // Or just skip the content.
-                            reader.seek(SeekFrom::Current(length as i64));
+                            match reader.seek(SeekFrom::Current(length as i64)) {
+                                Err(_) => {
+                                    eprintln!("Error! Tried to seek to invalid file offset.");
+                                    ()
+                                }
+                                _ => (),
+                            };;
                         }
                     }
                 } else {
@@ -302,11 +316,19 @@ impl ABCCache {
                 Some((offset, length)) => {
                     let mut string_buf = Vec::with_capacity(*length);
 
-                    self.reader.seek(SeekFrom::Start(*offset as u64));
-                    string_buf.resize(*length, 0x0);
-                    self.reader.read_exact(&mut string_buf);
+                    match self.reader.seek(SeekFrom::Start(*offset as u64)) {
+                        Err(_) => {
+                            eprintln!("Error! Tried to seek to invalid file offset.");
+                            return None;
+                        }
+                        Ok(_) => (),
+                    };
 
-                    Some(Arc::new(String::from_utf8(string_buf).unwrap()))
+                    string_buf.resize(*length, 0x0);
+                    match self.reader.read_exact(&mut string_buf) {
+                        Ok(_) => Some(Arc::new(String::from_utf8(string_buf).unwrap())),
+                        Err(_) => None,
+                    }
                 }
 
                 // Or none.
@@ -320,7 +342,7 @@ impl ABCCache {
 impl Clone for ABCCache {
     fn clone(&self) -> ABCCache {
         let f = File::open(&self.cache_path).unwrap();
-        let mut reader = BufReader::new(f);
+        let reader = BufReader::new(f);
         ABCCache {
             reader,
             cache_path: self.cache_path.clone(),
