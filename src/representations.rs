@@ -138,7 +138,8 @@ const FEATURES_SIZE: usize = 512;
 pub fn asts_to_features_s(
     inputs: &HashMap<u32, tune_ast_three::Tune>,
 ) -> relations::FeaturesBinaryVSM {
-    let mut vsm = relations::FeaturesBinaryVSM::new(FEATURES_SIZE, inputs.len());
+    let top_id = inputs.keys().max().unwrap();
+    let mut vsm = relations::FeaturesBinaryVSM::new(FEATURES_SIZE, *top_id as usize);
 
     for (id, content) in inputs.iter() {
         let features = ast_to_features(content);
