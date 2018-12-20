@@ -2,6 +2,7 @@ use std::usize;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -273,6 +274,17 @@ pub enum ScoreNormalization {
     Max,
 }
 
+impl ScoreNormalization {
+    pub fn score(&self, num_intersecting_bits: u32, a_bitcount: u32, b_bitcount: u32) -> f32 {
+        match self {
+            ScoreNormalization::DocA => (num_intersecting_bits as f32) / (a_bitcount as f32),
+            ScoreNormalization::Max => {
+                (num_intersecting_bits as f32) / (u32::max(a_bitcount, b_bitcount) as f32)
+            }
+        }
+    }
+}
+
 // Binary Vector Space Model, with parameterized term type.
 // Allocated with static size, with each document's term vector represented as
 // a bitfield as an array of 64-bit words. The size of the bitfield is static,
@@ -281,8 +293,11 @@ pub enum ScoreNormalization {
 // terms are in a given document after the fact.
 // Lookups are done by a linear scan over each document, with bitwise intersection and popcount.
 pub struct BinaryVSM<K> {
-    // Map of term to term id. This simply increments for each new temr found.
+    // Map of term to term id. This simply increments for each new term found.
     terms: HashMap<K, usize>,
+
+    // Inverted map of term to value.
+    terms_i: HashMap<usize, K>,
 
     next_term_id: usize,
 
@@ -290,12 +305,8 @@ pub struct BinaryVSM<K> {
     // Indexed 2d array as (tune_id * word_capacity) + term_bit
     docs_terms: Vec<u64>,
 
-    // Map of tune id -> refs to terms.
-    // Not used for searching but for retrieval.
-    // Values are stored rather than references. The most common usage,
-    // interval windows, the value is 80 bits. Compared to 64 bits for a pointer,
-    // it's worth the saving in lifetime wrangling.
-    pub docs_terms_literal: Vec<Vec<K>>,
+    // Map of tune id -> list of term IDs found.
+    pub docs_terms_exact: Vec<HashSet<usize>>,
 
     // Top tune id
     top_id: usize,
@@ -317,15 +328,16 @@ where
         );
 
         let table = vec![0x0; word_capacity * (top_id + 1)];
-        let literal = vec![vec![]; top_id + 1];
+        let exact = vec![HashSet::new(); top_id + 1];
 
         BinaryVSM {
             terms: HashMap::new(),
+            terms_i: HashMap::new(),
             docs_terms: table,
             next_term_id: 0,
             word_capacity: word_capacity,
             bit_capacity: bit_capacity,
-            docs_terms_literal: literal,
+            docs_terms_exact: exact,
             top_id: top_id,
         }
     }
@@ -338,9 +350,14 @@ where
             return *id;
         }
 
-        self.terms.insert(term, self.next_term_id);
+        let id = self.next_term_id;
+        // We need to store the term twice.
+        // TODO can we store a reference to the `terms` heap object instead?
+        self.terms_i.insert(id, term.clone());
+        self.terms.insert(term, id);
         self.next_term_id += 1;
-        self.next_term_id - 1
+
+        id
     }
 
     pub fn get_word_bit(&self, term_id: usize) -> (usize, usize) {
@@ -361,7 +378,7 @@ where
         let bit_i = term_id % self.bit_capacity;
         let (word_offset, bit_offset) = self.get_word_bit(bit_i);
         self.docs_terms[tune_id * self.word_capacity + word_offset] |= (1 << bit_offset);
-        self.docs_terms_literal[tune_id].push(term.clone());
+        self.docs_terms_exact[tune_id].insert(term_id);
     }
 
     // TODO can terms be a ref?
@@ -369,12 +386,16 @@ where
         &self,
         terms: Vec<K>,
         cutoff: f32,
+        exact: bool,
         normalization: ScoreNormalization,
     ) -> ResultSet {
         eprintln!("Search by terms: {:?}", terms);
 
-        // Initialize a bit vector.
+        // Set of term IDs as a bit vector.
         let mut words = vec![0; self.word_capacity];
+
+        // Set of term IDs as a set.
+        let mut terms_set: HashSet<usize> = HashSet::new();
 
         // Set bits for terms.
         for term in terms.iter() {
@@ -383,16 +404,28 @@ where
                 let bit_i = term_id % self.bit_capacity;
                 let (word_offset, bit_offset) = self.get_word_bit(bit_i);
                 words[word_offset] |= (1 << bit_offset);
+
+                if exact {
+                    terms_set.insert(*term_id);
+                }
             }
         }
 
-        self.search_by_bitfield_words(&words, cutoff, normalization)
+        self.search_by_bitfield_words(
+            &words,
+            cutoff,
+            if exact { Some(terms_set) } else { None },
+            normalization,
+        )
     }
 
+    // Search by a bit vector of term IDs. This is lossy, as there can be some wrapping.
+    // If an optional HashSet of term IDs is supplied, scope down results exactly to that.
     pub fn search_by_bitfield_words(
         &self,
         a_words: &[u64],
         cutoff: f32,
+        exact_terms: Option<HashSet<usize>>,
         normalization: ScoreNormalization,
     ) -> ResultSet {
         let mut results = ResultSet::new();
@@ -402,6 +435,8 @@ where
             a_bitcount += word.count_ones();
         }
 
+        // Full scan of each document's bit vector.
+        // A is the query document. B is the other document (we're scanning).
         for b in 0..self.top_id {
             let mut b_bitcount = 0;
 
@@ -413,22 +448,48 @@ where
                 b_bitcount += b_words[i].count_ones();
             }
 
-            // Different use cases call for different normalization.
-            let result = match normalization {
-                ScoreNormalization::DocA => (num_intersecting_bits as f32) / (a_bitcount as f32),
-                ScoreNormalization::Max => {
-                    (num_intersecting_bits as f32) / (u32::max(a_bitcount, b_bitcount) as f32)
+            // If nothing intersects, that's zero match.
+            if num_intersecting_bits == 0 {
+                continue;
+            }
+
+            // Get an initial score based on the lossy bit intsection.
+            let score = normalization.score(num_intersecting_bits, a_bitcount, b_bitcount);
+
+            // If the score doesn't match the threshold, stop.
+            // If we do further exact matching, we may end up with a higher score. However, putting
+            // this guard here makes sense.
+            // Firstly, if there's no exact matching, it needs to happen anyway.
+            // Secondly, if there is exact matching, it's more expensive, so we need to guard it.
+            if score < cutoff {
+                continue;
+            }
+            
+            match exact_terms {
+                // If already matches because of the above guard.
+                None => {
+                    results.add(b, score);
+                }
+                // Need to do a further test.
+                Some(ref a_term_ids) => {
+                    if let Some(b_term_ids) = self.docs_terms_exact.get(b) {
+                        let intersecting_values =
+                            a_term_ids.intersection(b_term_ids).count() as u32;
+                        let exact_score =
+                            normalization.score(intersecting_values, a_bitcount, b_bitcount);
+                        //                        eprintln!("Tune: {} score: {} exact score: {}", &b, &score, &exact_score);
+                        if (intersecting_values > 0 && score >= cutoff) {
+                            results.add(b, exact_score);
+                        }
+                    }
                 }
             };
-
-            if num_intersecting_bits > 0 && result >= cutoff {
-                results.add(b, result);
-            }
         }
 
         results
     }
 
+    // Search by similarity to an existing document's term vector.
     pub fn search_by_id(
         &self,
         a: usize,
@@ -443,15 +504,15 @@ where
 
         let a_words =
             &self.docs_terms[self.word_capacity * (a as usize)..self.word_capacity * (a + 1)];
-        self.search_by_bitfield_words(a_words, cutoff, normalization)
+        self.search_by_bitfield_words(a_words, cutoff, None, normalization)
     }
 
     pub fn print_debug_tunes(&self) {
         for id in 0..self.top_id {
-            if self.docs_terms_literal[id].len() > 0 {
+            if self.docs_terms_exact[id].len() > 0 {
                 eprintln!("Doc {}:", id);
-                for term in self.docs_terms_literal[id].iter() {
-                    eprint!("{:?} ", term);
+                for term in self.docs_terms_exact[id].iter() {
+                    eprint!("{:?} ", self.terms_i.get(term));
                 }
                 eprintln!("");
             }
@@ -505,7 +566,8 @@ impl IntervalWindowBinaryVSM {
     ) -> ResultSet {
         let terms = IntervalWindowBinaryVSM::intervals_to_terms(interval_seq);
 
-        self.vsm.search_by_terms(terms, cutoff, normalization)
+        self.vsm
+            .search_by_terms(terms, cutoff, false, normalization)
     }
 }
 

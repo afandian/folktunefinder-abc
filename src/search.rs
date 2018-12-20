@@ -509,6 +509,7 @@ impl SearchEngine {
             let group_result = self.features.vsm.search_by_terms(
                 vals.to_vec(),
                 0.0,
+                true,
                 relations::ScoreNormalization::DocA,
             );
 
