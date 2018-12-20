@@ -3,6 +3,42 @@
 Tools for working with ABC Notation files (http://abcnotation.com) created whilst making FolkTuneFinder.com.
 This is just a bit of fun to try out Rust language. It might go nowhere.
 
+## Current state of play - Dec 2018
+
+If there's anyone watching.
+
+I started this in December 2017, and then had a busy year. As of December 2018:
+
+ - Looks like this will make a viable open source search engine to run FolkTuneFinder.com.
+ - Will also remain open to other ABC-related uses. Let me know if you're interested.
+ - Scan a directory of ABC tunes, glob into a single file.
+ - Cluster tunes by similarity into groups. 
+ - Search engine can:
+   - Do limited feature extraction (time, key, rhythm)
+   - Do limited melody indexing. This is only at proof of concept state just now. (Need to finish ABC parser before doing much more).
+   - Spin up REST API for searching:
+     - Exact melody search.
+     - Filter by features (key, time, rhythm).
+     - Facet by features.
+     - Pagination.
+     - Optional roll-up by tune clusters.
+     - Retrieve tune ABC.
+
+To run:
+
+    HTTP_BIND=0.0.0.0:8765 RUST_BACKTRACE=1 BASE=~/personal/tune-db cargo run --release server
+    
+Then visit:
+
+    http://localhost:8765/v3/tunes/search?interval_ngram=60,62,64,65,67,69&rollup=false&facet=true&key=G
+ 
+Room for improvement:
+
+ - Has an ABC lexer, parser, AST. However it's not totally finished and will require more tweaking, test cases.
+ - Typesetting is probably a dead end. There are other packages that do this.
+ - Feature extraction can be improved. Probably create a vocabulary of rythm types.
+ - No text indexing / searching yet.
+
 ## Aims
 
  - Well documented, fully tested and generally friendly to a newcomer to the codebase.

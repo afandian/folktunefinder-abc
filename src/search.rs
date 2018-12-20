@@ -43,7 +43,7 @@ use serde_json;
 #[derive(Debug)]
 pub struct ResultSet {
     // Tune id => weight.
-    results: HashMap<usize, f32>,
+    pub results: HashMap<usize, f32>,
 }
 
 impl ResultSet {
@@ -131,10 +131,11 @@ pub struct Selection {
     pub rollup: bool,
 
     // Include the ABC text.
+    // TODO not implemented yet.
     pub include_abc: bool,
 
-    // Include the proxy object.
-    pub include_proxy: bool,
+    // Include facets for all features.
+    pub facet: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -266,11 +267,11 @@ impl SearchEngine {
             _ => false,
         };
 
-        let include_proxy = match params.get("include_proxy") {
+        let facet = match params.get("facet") {
             Some(val) => match val.as_ref() {
                 "true" => true,
                 "false" => false,
-                _ => return Err("Invalid value for 'include_proxy'".to_string()),
+                _ => return Err("Invalid value for 'facet'".to_string()),
             },
             _ => false,
         };
@@ -280,7 +281,7 @@ impl SearchEngine {
             rows,
             rollup,
             include_abc,
-            include_proxy,
+            facet,
         })
     }
 
@@ -371,6 +372,9 @@ impl SearchEngine {
         usize,
         // Result set (may be cut down by dedupe).
         usize,
+        // Facet for (whole) result set.
+        Option<HashMap<String, Vec<(String, u32)>>>,
+        // Page of results.
         Vec<DecoratedResult>,
     ) {
         // First generate a weighted set.
@@ -409,6 +413,13 @@ impl SearchEngine {
         // there were no matches vs an empty set becuase there was no filter.
         if query.filter.has_filters() {
             generated.filter_by(&filtered_results);
+        };
+
+        // Then generate facets if they were requested.
+        let facets = if query.selection.facet {
+            Some(self.features.facet_features_for_resultset(&generated))
+        } else {
+            None
         };
 
         // Then do selection.
@@ -481,7 +492,7 @@ impl SearchEngine {
             }
         }
 
-        (total_results, num_unique_results, results)
+        (total_results, num_unique_results, facets, results)
     }
 
     // Produce a result set by applying filters.

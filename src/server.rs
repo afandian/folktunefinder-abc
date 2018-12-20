@@ -82,13 +82,15 @@ fn search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor
             match searcher.parse_query(params) {
                 Err(message) => Response::from_string(message).with_status_code(StatusCode(400)),
                 Ok(query) => {
-                    let (num_total_results, num_unique_results, results) = searcher.search(&query);
+                    let (num_total_results, num_unique_results, facets, results) =
+                        searcher.search(&query);
 
-                    let result_body = serde_json::json!({
+                    let mut result_body = serde_json::json!({
                         "query": query,
                         "total": num_total_results,
                         "unique": num_unique_results,
                         "results": results,
+                        "facets": facets,
                     });
 
                     Response::from_string(result_body.to_string())

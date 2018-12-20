@@ -323,8 +323,8 @@ where
     pub fn new(bit_capacity: usize, top_id: usize) -> BinaryVSM<K> {
         let word_capacity = bit_capacity / 64 + 1;
         eprintln!(
-            "New BinaryVSM bits: {} words: {}",
-            bit_capacity, word_capacity
+            "New BinaryVSM bits: {} words: {} top tune id: {}",
+            bit_capacity, word_capacity, top_id
         );
 
         let table = vec![0x0; word_capacity * (top_id + 1)];
@@ -464,7 +464,7 @@ where
             if score < cutoff {
                 continue;
             }
-            
+
             match exact_terms {
                 // If already matches because of the above guard.
                 None => {
@@ -625,6 +625,42 @@ impl FeaturesBinaryVSM {
         if vals.len() > 0 {
             results.insert(prev_feature_type.to_string(), vals);
         }
+        results
+    }
+
+    // Return structure of feature types, values and counts for the Result Set.
+    // Used for faceting.
+    // Structure is feature-type -> feature-value -> count
+    pub fn facet_features_for_resultset(
+        &self,
+        result_set: &ResultSet,
+    ) -> HashMap<String, Vec<(String, u32)>> {
+        let mut counts: HashMap<(String, String), u32> = HashMap::new();
+
+        for (tune_id, _) in result_set.results.iter() {
+            let feature_ids = &self.vsm.docs_terms_exact[*tune_id];
+            for feature_id in feature_ids.iter() {
+                if let Some((ref typ, ref val)) = self.vsm.terms_i.get(feature_id) {
+                    *counts
+                        .entry((typ.to_string(), val.to_string()))
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        let mut results = HashMap::new();
+        for ((typ, val), cnt) in counts {
+            (*results.entry(typ.to_string()).or_insert(vec![])).push((val, cnt));
+        }
+
+        // Within each type, sort by count.
+        // No limiting just yet. With current data, a full page of all facet values is 200Kb,
+        // which is fine. If this gets fed into a user interface, some kind of limiting should
+        // happen downstream.
+        for (k, v) in results.iter_mut() {
+            v.sort_by(|(_, cnt_a), (_, cnt_b)| cnt_b.cmp(cnt_a));
+        }
+
         results
     }
 }
