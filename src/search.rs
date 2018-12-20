@@ -5,12 +5,12 @@
 //!
 //! Query syntax, presented as key-value from query string:
 //! Filters:
-//!  - todo
-//!  -
+//!  - these depend on the data
 //!
 //! Generators:
 //!  - all
 //!  - interval_ngram
+//!  - title
 //!  - degree_ngram
 //!  - interval_histogram
 //!  - degree_histogram
@@ -19,8 +19,7 @@
 //!  - offset
 //!  - rows
 //!  - include_abc
-//!  - include_proxy
-//!  -
+//!  - rollup
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;

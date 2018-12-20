@@ -16,13 +16,17 @@ I started this in December 2017, and then had a busy year. As of December 2018:
  - Search engine can:
    - Do limited feature extraction (time, key, rhythm)
    - Do limited melody indexing. This is only at proof of concept state just now. (Need to finish ABC parser before doing much more).
+   - Do text search for title.
    - Spin up REST API for searching:
      - Exact melody search.
+     - Title search.
      - Filter by features (key, time, rhythm).
-     - Facet by features.
+     - Facet results by features.
      - Pagination.
      - Optional roll-up by tune clusters.
      - Retrieve tune ABC.
+     
+
 
 To run:
 
@@ -31,13 +35,33 @@ To run:
 Then visit:
 
     http://localhost:8765/v3/tunes/search?interval_ngram=60,62,64,65,67,69&rollup=false&facet=true&key=G
+    
+Search params:
+
+ - Search:
+    - `interval_ngram` - Supply a sequence of pitches, search by ngram.
+    - `title` - Supply some title text, search by that.
+    - If neither is supplied, return all tunes.
+ - Filter:
+    - `metre`, e.g. `metre=4/4`
+    - `key`, e.g. `key=A'
+    - `key-signature` e.g. `key-signature=A-Dorian`
+    - `metre-beats`, e.g. `metre-beats=4`
+    - `mode`, e.g. `mode=Major`
+    - `rhythm`, e.g. `rhythm=jig`. NB this is currently index un-normalized as supplied in the ABC and mostly useless.
+    - For a full set of filter types and values, visit `/v3/features` or look in the facets of search results.
+ - Selection:
+    - `rows` - page size, e.g. `rows=20`
+    - `offset` - page starting point, e.g. `offset=20`
+    - `facet` - Include facets? This gives a breakdown of feature types and values, along with counts, that can be used to further filter. e.g. `facet=true`
+    - `include-abc` - Not yet implemented.
+    - `rollup` - Roll up duplicates (i.e. so similar as to be transcriptions of the same thing) so that only the best match from each tune is shown. The total number of results is shown in the results, along with the number of 'unique' results.
  
 Room for improvement:
 
  - Has an ABC lexer, parser, AST. However it's not totally finished and will require more tweaking, test cases.
  - Typesetting is probably a dead end. There are other packages that do this.
  - Feature extraction can be improved. Probably create a vocabulary of rythm types.
- - No text indexing / searching yet.
 
 ## Aims
 
