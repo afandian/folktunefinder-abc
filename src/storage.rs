@@ -186,7 +186,8 @@ impl ABCCache {
                                 Ok(_) => {
                                     match String::from_utf8(string_buf) {
                                         Ok(tune_string) => {
-                                            {self.string_cache.insert(tune_id, Arc::new(tune_string));}
+                                            self.string_cache
+                                                .insert(tune_id, Arc::new(tune_string));
                                         }
                                         _ => eprintln!("Failed to read string buffer."),
                                     };

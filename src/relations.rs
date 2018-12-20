@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::io::{BufReader, BufWriter};
 
 use search::ResultSet;
+use text;
 
 // Provide at least this much overhead when reallocating.
 pub const GROWTH_OVERHEAD: usize = 1024;
@@ -382,7 +383,7 @@ where
     // TODO can terms be a ref?
     pub fn search_by_terms(
         &self,
-        terms: Vec<K>,
+        terms: &Vec<K>,
         cutoff: f32,
         exact: bool,
         normalization: ScoreNormalization,
@@ -516,6 +517,16 @@ where
             }
         }
     }
+
+    // Return number of distinct terms, size of term vector, and the load factor.
+    // The load factor can be greater than 1, in which case lookups are lossy.
+    pub fn load_factor(&self) -> (usize, usize, f32) {
+        (
+            self.terms.len() as usize,
+            self.bit_capacity,
+            self.terms.len() as f32 / self.bit_capacity as f32,
+        )
+    }
 }
 
 const INTERVAL_WINDOW_SIZE: usize = 5;
@@ -564,8 +575,9 @@ impl IntervalWindowBinaryVSM {
     ) -> ResultSet {
         let terms = IntervalWindowBinaryVSM::intervals_to_terms(interval_seq);
 
+        eprintln!("Text search by: {:?}", &terms);
         self.vsm
-            .search_by_terms(terms, cutoff, false, normalization)
+            .search_by_terms(&terms, cutoff, false, normalization)
     }
 }
 
@@ -660,6 +672,38 @@ impl FeaturesBinaryVSM {
         }
 
         results
+    }
+}
+
+// Text VSM
+// Does its own tokenization on indexing and search.
+pub struct TextVSM {
+    pub vsm: BinaryVSM<String>,
+}
+
+impl TextVSM {
+    pub fn new(size: usize, top_id: usize) -> TextVSM {
+        TextVSM {
+            vsm: BinaryVSM::new(size, top_id),
+        }
+    }
+
+    pub fn add(&mut self, tune_id: usize, string: String) {
+        let tokens = text::tokenize(&string);
+        for tok in tokens {
+            self.vsm.add(tune_id, tok);
+        }
+    }
+
+    pub fn search(&self, string: String) -> ResultSet {
+        // TODO there must be a better way to do this...
+        let mut tokens: Vec<String> = vec![];
+        for x in text::tokenize(&string).iter() {
+            tokens.push(x.to_string());
+        }
+
+        self.vsm
+            .search_by_terms(&tokens, 0.0, false, ScoreNormalization::DocA)
     }
 }
 

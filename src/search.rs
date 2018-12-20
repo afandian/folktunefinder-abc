@@ -88,16 +88,21 @@ pub enum Generator {
     // All tunes, weighted by ID.
     All,
 
+    Title(String),
+
     // Search by interval n-gram similarity, weighted by similarity.
     IntervalNGram(Vec<u8>),
 
     // Search by degree n-gram similarity, weighted by similarity.
+    // TODO not yet implemented.
     DegreeNGram(Vec<u8>),
 
     // Search by interval histogram similarity, weighted by similarity.
+    // TODO not yet implemented.
     IntervalHistogram(Vec<f32>),
 
     // Search by degree histogram similarity, weighted by similarity.
+    // TODO not yet implemented.
     DegreeHistogram(Vec<f32>),
 }
 
@@ -170,7 +175,9 @@ pub struct SearchEngine {
     // Interval window VSM for melody searching.
     // TODO normalize this to the other nomenclature 0f interval / degree + histogram / ngram.
     interval_term_vsm: relations::IntervalWindowBinaryVSM,
-    //  TODO Text VSM.
+
+    // Index of title text.
+    text_vsm: relations::TextVSM,
 
     // Cache of all known features.
     all_features_cached: HashMap<String, Vec<String>>,
@@ -191,8 +198,9 @@ impl SearchEngine {
         eprintln!("Building feature index...");
         let features = representations::asts_to_features_s(&asts);
 
-        // TODO allow filtering by features, search by intervals.
-        // TODO build text index.
+        eprintln!("Building title index...");
+        let text_vsm = representations::asts_to_text_index_s(&asts);
+
         // TODO build synonyms and development tools for features, specifically Rhythm.
 
         // Keep a copy of all known features.
@@ -202,6 +210,7 @@ impl SearchEngine {
             clusters,
             asts,
             features,
+            text_vsm,
             all_features_cached,
             abcs: abcs_arc,
             interval_term_vsm,
@@ -284,6 +293,12 @@ impl SearchEngine {
     fn parse_generator(&self, params: &HashMap<String, String>) -> Result<Generator, String> {
         // This argument is given as absolute pitches, at least for now.
         // Would be more consistent to convert it to intervals prior to querying API perhaps...
+
+        match params.get("title") {
+            Some(val) if val.len() > 0 => return Ok(Generator::Title(val.to_string())),
+            _ => (),
+        }
+
         if let Some(val) = params.get("interval_ngram") {
             match val.split(",").map(|s| s.parse::<u8>()).collect() {
                 Ok(value) => return Ok(Generator::IntervalNGram(value)),
@@ -392,6 +407,7 @@ impl SearchEngine {
                     relations::ScoreNormalization::DocA,
                 )
             }
+            Generator::Title(ref text) => self.text_vsm.search(text.to_string()),
 
             // TODO implement other generators.
             _ => ResultSet::new(),
@@ -435,7 +451,7 @@ impl SearchEngine {
         // Sort has to be stable, as we're iterating over pages.
         // So sort by ID first.
         results.sort_by_key(|x| x.id);
-        results.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
         // If this is set (and it is by default) only include the first (best) result in any group.
         let mut results: Vec<DecoratedResult> = if query.selection.rollup {
@@ -514,7 +530,7 @@ impl SearchEngine {
         for (_typ, vals) in groups.iter() {
             // OR within the type.
             let group_result = self.features.vsm.search_by_terms(
-                vals.to_vec(),
+                vals,
                 0.0,
                 true,
                 relations::ScoreNormalization::DocA,

@@ -14,6 +14,8 @@ use storage;
 use tune_ast_three;
 use typeset;
 
+use abc_lexer as l;
+
 // This gives the best performance for 200,000 tunes.
 const THREADS: u32 = 8;
 
@@ -147,6 +149,35 @@ pub fn asts_to_features_s(
             vsm.add(*id as usize, feature_type, feature_value);
         }
     }
+
+    vsm
+}
+
+// We think there will be about this many text terms.
+// The load factor of the VSM with real data should dermine this.
+// Tweak until the balance is right.
+const TEXT_SIZE: usize = 65432;
+
+pub fn asts_to_text_index_s(inputs: &HashMap<u32, tune_ast_three::Tune>) -> relations::TextVSM {
+    let top_id = inputs.keys().max().unwrap();
+    let mut vsm = relations::TextVSM::new(TEXT_SIZE, *top_id as usize);
+
+    for (id, ast) in inputs.iter() {
+        let titles = ast.prelude.iter().filter_map(|x| match x {
+            l::T::Title(x) => Some((*x).clone()),
+            _ => None,
+        });
+
+        for title in titles {
+            vsm.add(*id as usize, title);
+        }
+    }
+
+    let (distinct_terms, vector_width, load_factor) = vsm.vsm.load_factor();
+    eprintln!(
+        "Text: distinct_terms: {}, vector_width: {}, load_factor: {})",
+        distinct_terms, vector_width, load_factor
+    );
 
     vsm
 }

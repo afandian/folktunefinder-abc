@@ -14,6 +14,7 @@ extern crate serde_derive;
 
 extern crate regex;
 extern crate tiny_http;
+extern crate unidecode;
 extern crate url;
 
 mod abc_lexer;
@@ -27,6 +28,7 @@ mod search;
 mod server;
 mod storage;
 mod svg;
+mod text;
 mod tune_ast_three;
 mod typeset;
 
