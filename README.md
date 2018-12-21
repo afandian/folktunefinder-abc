@@ -25,7 +25,7 @@ I started this in December 2017, and then had a busy year. As of December 2018:
      - Pagination.
      - Optional roll-up by tune clusters.
      - Retrieve tune ABC.
-     
+   - Very beginnings of a web interface. HTML templates using handlebars, with configurable template directory.
 
 
 To run:
@@ -34,8 +34,17 @@ To run:
     
 Then visit:
 
-    http://localhost:8765/v3/tunes/search?interval_ngram=60,62,64,65,67,69&rollup=false&facet=true&key=G
-    
+    http://localhost:8765/api/v3/tunes/search?interval_ngram=60,62,64,65,67,69&rollup=false&facet=true&key=G
+
+Using configurable template directory (WIP):
+
+    HTML_TEMPLATES=demo-html-templates HTTP_BIND=0.0.0.0:8765 RUST_BACKTRACE=1 BASE=~/personal/tune-db cargo run --release server
+
+then:
+
+    http://localhost:8765/tunes?interval_ngram=60,62,64,65,67,69&rollup=false&facet=true&key=G
+
+
 Search params:
 
  - Search:
@@ -49,7 +58,7 @@ Search params:
     - `metre-beats`, e.g. `metre-beats=4`
     - `mode`, e.g. `mode=Major`
     - `rhythm`, e.g. `rhythm=jig`. NB this is currently index un-normalized as supplied in the ABC and mostly useless.
-    - For a full set of filter types and values, visit `/v3/features` or look in the facets of search results.
+    - For a full set of filter types and values, visit `/api/v3/features` or look in the facets of search results.
  - Selection:
     - `rows` - page size, e.g. `rows=20`
     - `offset` - page starting point, e.g. `offset=20`

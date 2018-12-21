@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Folk Tune Finder Search</title>
+</head>
+<body>
+<p>Found {{ num_total_results }} tunes, of which {{ num_unique_results }} were unique.</p>
+
+<h1>Query</h1>
+{{ query }}
+
+<h1>Results</h1>
+<ul>
+{{#each results }}
+    <li><a href="/tunes/{{ id }}">{{ titles }}</a>
+    {{ score }}</li>
+{{/each}}
+</ul>
+
+<h1>Facets</h1>
+{{#each facets }}
+<h2>{{@key}}</h2>
+<ul>
+{{#each this}}
+<li>{{lookup this 0}}: {{lookup this 1}}</li>
+{{/each}}
+</ul>
+{{/each}}
+</body>
+</html>
