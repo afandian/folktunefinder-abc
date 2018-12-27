@@ -152,6 +152,7 @@ fn html_search(
                         results,
                         facets,
                     };
+
                     Response::from_string(
                         handlebars
                             .render("search", &context)
@@ -164,6 +165,37 @@ fn html_search(
                 }
             }
         }
+    }
+}
+
+fn html_from_template(
+    request: &Request,
+    template: &str,
+    handlebars: &Handlebars,
+) -> Response<Cursor<Vec<u8>>> {
+    if !handlebars.has_template(&template) {
+        return Response::from_string("Couldn't find that.".to_string())
+            .with_status_code(StatusCode(400))
+            .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..]).unwrap());
+    }
+
+    Response::from_string(
+        handlebars
+            .render(template, &HashMap::<String, String>::new())
+            .unwrap_or("Template error!".to_string())
+            .to_string(),
+    ).with_status_code(StatusCode(200))
+    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..]).unwrap())
+}
+
+fn html_free(
+    request: &Request,
+    groups: &regex::Captures,
+    handlebars: &Handlebars,
+) -> Response<Cursor<Vec<u8>>> {
+    match groups.get(1) {
+        Some(template) => html_from_template(request, template.as_str(), handlebars),
+        _ => Response::from_string("Not found!").with_status_code(StatusCode(404)),
     }
 }
 
@@ -200,15 +232,17 @@ fn build_template_registry() -> Handlebars {
 pub fn main(mut searcher: search::SearchEngine) {
     // API endpoints.
     // There have been folktunefinders before.
-    let re_api_abc = regex::Regex::new(r"/api/v3/tunes/(\d+).abc").unwrap();
-    let re_api_svg = regex::Regex::new(r"/api/v3/tunes/(\d+).svg").unwrap();
-    let re_api_tunes = regex::Regex::new(r"/api/v3/tunes").unwrap();
-    let re_api_features = regex::Regex::new(r"/api/v3/features").unwrap();
+    let re_api_abc = regex::Regex::new(r"^/api/v3/tunes/(\d+).abc$").unwrap();
+    let re_api_svg = regex::Regex::new(r"^/api/v3/tunes/(\d+).svg$").unwrap();
+    let re_api_tunes = regex::Regex::new(r"^/api/v3/tunes(\?.*)?$").unwrap();
+    let re_api_features = regex::Regex::new(r"^/api/v3/features$").unwrap();
 
     // HTML endpoints.
-    let re_html_home = regex::Regex::new(r"/").unwrap();
-    let re_html_tunes = regex::Regex::new(r"/tunes").unwrap();
-    let re_html_tune = regex::Regex::new(r"/tunes/(\d+)").unwrap();
+    let re_html_home = regex::Regex::new(r"^/$").unwrap();
+    let re_html_tunes = regex::Regex::new(r"/tunes(\?.*)?$").unwrap();
+    let re_html_tune = regex::Regex::new(r"/tunes/(\d+)$").unwrap();
+
+    let re_html_wildcard = regex::Regex::new(r"^/(.+)$").unwrap();
 
     let key = "HTTP_BIND";
     let bind = match env::var(key) {
@@ -239,17 +273,24 @@ pub fn main(mut searcher: search::SearchEngine) {
         } else if let Some(_groups) = re_api_tunes.captures(request.url()) {
             api_search(&request, &mut searcher)
         } else if let Some(_groups) = re_api_features.captures(request.url()) {
-                features(&request, &mut searcher)
-            }
+            features(&request, &mut searcher)
+        }
+
                 // HTML routes.
 
-                // TODO HOME
-                else if let Some(_) = re_html_tunes.captures(request.url()) {
-                    html_search(&request, &mut searcher, &templates)
-                }
+        else if let Some(_) = re_html_tunes.captures(request.url()) {
+            html_search(&request, &mut searcher, &templates)
+        }
 
-                // Else.
-                else {
+        else if let Some(_) = re_html_home.captures(request.url()) {
+            html_from_template(&request, "home", &templates)
+        }
+
+        else if let Some(path) = re_html_wildcard.captures(request.url()) {
+            html_free(&request, &path, &templates)
+        }
+
+        else {
             Response::from_string("Didn't recognise that.").with_status_code(StatusCode(404))
         };
 

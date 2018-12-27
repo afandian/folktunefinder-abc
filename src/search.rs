@@ -18,7 +18,6 @@
 //! Select:
 //!  - offset
 //!  - rows
-//!  - include_abc
 //!  - rollup
 
 use std::cmp::Ordering;
@@ -130,10 +129,6 @@ pub struct Selection {
     // When true, return only the best tune per group.
     pub rollup: bool,
 
-    // Include the ABC text.
-    // TODO not implemented yet.
-    pub include_abc: bool,
-
     // Include facets for all features.
     pub facet: bool,
 }
@@ -235,6 +230,23 @@ impl SearchEngine {
         Ok(Filter { features: relevant })
     }
 
+    fn parse_bool(
+        &self,
+        params: &HashMap<String, String>,
+        param_name: &str,
+        default: bool,
+    ) -> Result<bool, String> {
+        match params.get(param_name) {
+            Some(val) => match val.as_ref() {
+                // HTML forms use on/off . API usage is more conventional true/false.
+                "true" | "on" => Ok(true),
+                "false" | "off" => Ok(false),
+                _ => Err(format!("Invalid value for '{}'", &param_name).to_string()),
+            },
+            _ => Ok(default),
+        }
+    }
+
     fn parse_selection(&self, params: &HashMap<String, String>) -> Result<Selection, String> {
         let offset: usize = match params.get("offset") {
             Some(v) => match v.parse::<usize>() {
@@ -253,38 +265,20 @@ impl SearchEngine {
             _ => DEFAULT_ROWS,
         };
 
-        let rollup = match params.get("rollup") {
-            Some(val) => match val.as_ref() {
-                "true" => true,
-                "false" => false,
-                _ => return Err("Invalid value for 'rollup'".to_string()),
-            },
-            _ => false,
+        let rollup = match self.parse_bool(&params, "rollup", true) {
+            Ok(val) => val,
+            Err(x) => return Err(x),
         };
 
-        let include_abc = match params.get("include_abc") {
-            Some(val) => match val.as_ref() {
-                "true" => true,
-                "false" => false,
-                _ => return Err("Invalid value for 'include_abc'".to_string()),
-            },
-            _ => false,
-        };
-
-        let facet = match params.get("facet") {
-            Some(val) => match val.as_ref() {
-                "true" => true,
-                "false" => false,
-                _ => return Err("Invalid value for 'facet'".to_string()),
-            },
-            _ => false,
+        let facet = match self.parse_bool(&params, "facet", true) {
+            Ok(val) => val,
+            Err(x) => return Err(x),
         };
 
         Ok(Selection {
             offset,
             rows,
             rollup,
-            include_abc,
             facet,
         })
     }

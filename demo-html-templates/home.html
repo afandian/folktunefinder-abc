@@ -1,0 +1,22 @@
+{{> header }}
+
+<h1>Folk Tune Finder Demo</h1>
+<p>This is the source code that powers <a href="https://www.folktunefinder.com">FolkTuneFinder.com</a>. You can find the source code at <a href="http://github.com/afandian/folktunefinder-abc">http://github.com/afandian/folktunefinder-abc</a>.</p>
+
+<p>If you want to search for tunes, visit <a href="https://www.folktunefinder.com">FolkTuneFinder.com</a> directly.</p>
+
+<h2>Search</h2>
+
+<form method="get" action="/tunes">
+    <h2>Search for title or melody.</h2>
+    <label>Title: <input type="text" name="title"></label>
+    <label>Melody: <input type="text" name="interval_ngram"></label>
+
+    <h2>Filter:</h2>
+    <label>Rollup duplicates: <input type="radio" name="rollup" value="true"></label>
+    <label>Show all tunes: <input type="radio" name="rollup" value="false"></label>
+
+    <button>Search</button>
+</form>
+
+{{> footer }}
