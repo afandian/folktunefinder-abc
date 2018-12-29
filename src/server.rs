@@ -15,7 +15,7 @@ use tiny_http::{Header, Request, Response, Server, StatusCode};
 
 fn api_abc(
     groups: &regex::Captures,
-    abc_cache: &mut storage::ABCCache,
+    abc_cache: &mut storage::ReadOnlyCache,
 ) -> Response<Cursor<Vec<u8>>> {
     match groups.get(1) {
         Some(id) => match id.as_str().parse::<u32>() {
@@ -37,7 +37,7 @@ fn api_abc(
 
 fn api_svg(
     groups: &regex::Captures,
-    abc_cache: &mut storage::ABCCache,
+    abc_cache: &mut storage::ReadOnlyCache,
 ) -> Response<Cursor<Vec<u8>>> {
     match groups.get(1) {
         Some(id) => {
@@ -70,7 +70,7 @@ fn api_svg(
 }
 
 // Search.
-fn api_search(request: &Request, searcher: &search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
+fn api_search(request: &Request, searcher: &mut search::SearchEngine) -> Response<Cursor<Vec<u8>>> {
     let base = Url::parse("http://0.0.0.0/").unwrap();
 
     match Url::join(&base, request.url()) {
@@ -125,7 +125,7 @@ struct HtmlSearchContext {
 // - remove filters
 fn html_search(
     request: &Request,
-    searcher: &search::SearchEngine,
+    searcher: &mut search::SearchEngine,
     handlebars: &Handlebars,
 ) -> Response<Cursor<Vec<u8>>> {
     let base = Url::parse("http://0.0.0.0/").unwrap();
@@ -256,12 +256,10 @@ pub fn main(mut searcher: search::SearchEngine) {
     // This can optionally run a HTML UI.
     let templates = build_template_registry();
 
-    let server = Server::http(bind).unwrap();
+    let mut server = Server::http(bind).unwrap();
 
     // Create a local mutable copy.
-    // TODO this is less than ideal, as it depends on the cache being constructed in ReadOnly mode.
-    // If not, this would double memory usage.
-    let mut abc_cache = (*searcher.abcs).clone();
+    let mut abc_cache = searcher.abc_cache.clone();
 
     for request in server.incoming_requests() {
         let response: Response<_> =

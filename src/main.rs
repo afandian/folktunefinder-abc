@@ -77,7 +77,6 @@ fn get_tune_cache_path() -> Option<PathBuf> {
 
 /// Check an ABC file, print the AST.
 fn main_ast() {
-    // let chars = get_stdin().chars().collect::<Vec<char>>();
     let input = get_stdin();
     let ast = representations::abc_to_ast(&input);
     eprintln!("{:#?}", ast);
@@ -141,8 +140,7 @@ fn main_scan() {
     let base_path = env::var("BASE").expect("Base directory config not supplied.");
 
     eprintln!("Refreshing tunecache...");
-    let mut abcs =
-        storage::ABCCache::new(tune_cache_path, storage::CacheBehaviour::ReadWrite).unwrap();
+    let mut abcs = storage::ReadWriteCache::new(tune_cache_path).unwrap();
     eprintln!("Loading cache...");
     abcs.load_cache();
     eprintln!("Scanning ABC files...");
@@ -157,29 +155,32 @@ fn main_validate() {
     let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
 
     eprintln!("Load read-only...");
-    let mut read_only_abcs =
-        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadOnly).unwrap();
+    let mut read_only_abcs = storage::ReadOnlyCache::new(tune_cache_path.clone()).unwrap();
     read_only_abcs.load_cache();
 
     eprintln!("Load read-write...");
-    let mut read_write_abcs =
-        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
-            .unwrap();
+    let mut read_write_abcs = storage::ReadWriteCache::new(tune_cache_path.clone()).unwrap();
     read_write_abcs.load_cache();
+
+    eprintln!("Load Scanner");
+    let mut scanner = storage::CacheScanner::new(tune_cache_path.clone());
 
     eprintln!("Compare...");
     let max_id = read_write_abcs.max_id();
     let mut errs = 0;
-    for tune_id in 0..max_id + 1 {
-        let rw_str_value = read_write_abcs.get(tune_id);
-        let ro_str_value = read_only_abcs.get(tune_id);
+    for entry in scanner.iter() {
+        let rw_str_value = read_write_abcs.get(entry.tune_id);
+        let ro_str_value = read_only_abcs.get(entry.tune_id);
 
-        let ok = rw_str_value == ro_str_value;
+        // Do all 3 agree?
+        let rw_ro_ok = rw_str_value == ro_str_value;
+        let scanner_ok = Some(entry.content.clone()) == rw_str_value;
 
-        if !ok {
-            eprintln!("Tune: {}", tune_id);
+        if !rw_ro_ok || !scanner_ok {
+            eprintln!("Tune: {}", entry.tune_id);
             eprintln!("RW val: {:?}", rw_str_value);
             eprintln!("RO val: {:?}", ro_str_value);
+            eprintln!("Scanner val: {:?}", &entry.content);
             errs += 1;
         }
     }
@@ -190,13 +191,6 @@ fn main_validate() {
 fn main_server() {
     eprintln!("Server loading ABCs...");
     let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
-
-    // ReadOnly vs ReadWrite has performance implications. When making substantial changes,
-    // profile both.
-    let mut abc_cache =
-        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
-            .unwrap();
-    abc_cache.load_cache();
 
     // Load clusters outside the SearchEngine engine object as we might want to swap in different ones.
     eprintln!("Server loading clusters...");
@@ -209,7 +203,15 @@ fn main_server() {
 
     eprintln!("Start server");
 
-    let searcher = search::SearchEngine::new(abc_cache, groups);
+    let searcher = search::SearchEngine::new(
+        tune_cache_path.clone(),
+        groups,
+        search::SearchEngineFeatures {
+            index_text: true,
+            index_melody_interval_term: true,
+            index_features: true,
+        },
+    );
     server::main(searcher);
 }
 
@@ -219,25 +221,21 @@ fn main_server() {
 fn main_cluster_preprocess() {
     eprintln!("Pre-process clusters.");
 
-    eprintln!("Load...");
     let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
-    let mut abcs =
-        storage::ABCCache::new(tune_cache_path.clone(), storage::CacheBehaviour::ReadWrite)
-            .unwrap();
-    abcs.load_cache();
 
-    let max_tune_id = abcs.max_id();
-    eprintln!("Max tune id: {}", max_tune_id);
+    // Initialize a search engine with no clustering info.
+    let clusters = relations::Clusters::new();
+    let searcher = search::SearchEngine::new(
+        tune_cache_path.clone(),
+        clusters,
+        search::SearchEngineFeatures {
+            index_text: false,
+            index_melody_interval_term: true,
+            index_features: false,
+        },
+    );
 
-    eprintln!("Parse...");
-    let abcs_arc = Arc::new(abcs);
-    let asts = representations::abc_to_ast_s(&abcs_arc);
-
-    eprintln!("Pitches...");
-    let pitches = representations::ast_to_pitches_s(&asts);
-
-    eprintln!("Intervals...");
-    let intervals = representations::pitches_to_intervals_s(&pitches);
+    let max_tune_id = searcher.get_max_tune_id();
 
     // The search is mostly about zipping through large amounts of contiguous memory
     // and doing simple bit manipulation, so too many threads may cause cache-thrashing
@@ -245,32 +243,33 @@ fn main_cluster_preprocess() {
     const THREADS: u32 = 4;
 
     let start = SystemTime::now();
-    let interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
+
     let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
 
-    let vsm_arc = Arc::new(interval_term_vsm);
+    let mut searcher_arc = Arc::new(searcher);
     let (tx, rx) = channel();
     for thread_i in 0..THREADS {
         let tx_clone = tx.clone();
-        let interval_term_vsm = vsm_arc.clone();
+        let searcher_clone = searcher_arc.clone();
         eprintln!("Start thread: {}", thread_i);
         thread::spawn(move || {
             let mut groups = relations::Clusters::with_max_id(max_tune_id as usize);
             let mut a_count = 0;
             for a in 0..max_tune_id {
                 if (a % THREADS) == thread_i {
-                    let results = interval_term_vsm
+                    let results = &searcher_clone
+                        .interval_term_vsm
                         .vsm
                         .search_by_id(a as usize, 0.8, relations::ScoreNormalization::Max)
                         .results();
 
                     for (b, _score) in results {
-                        groups.add(a as usize, b as usize);
+                        groups.add(a as usize, *b as usize);
                     }
 
                     a_count += 1;
 
-                    if a_count % 1000 == 0 {
+                    if a_count % 100 == 0 {
                         eprintln!(
                             "Done {} tunes (projected total {}) in thread {}...",
                             a_count,
@@ -318,6 +317,9 @@ fn main_unrecognised() {
 
 fn main() {
     let mut args = env::args();
+
+    // And now we can use it!
+    let tune_cache_path = get_tune_cache_path().expect("Base directory config not supplied.");
 
     match args.nth(1) {
         Some(first) => match first.as_ref() {

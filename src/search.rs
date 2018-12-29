@@ -24,14 +24,28 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use abc_lexer as l;
+use pitch;
 use relations;
 use representations;
 use storage;
 use tune_ast_three;
 
 use std::sync::Arc;
+
+// We think there will be about this many text terms.
+// The load factor of the VSM with real data should dermine this.
+// Tweak until the balance is right.
+const TEXT_SIZE: usize = 65432;
+
+// We think there will be about this many features.
+// The number of features is small and in theory bounded.
+// We want matchines to be exact with no collisions.
+const FEATURES_SIZE: usize = 512;
+
+const INTERVAL_TERM_SIZE: usize = 16127;
 
 // Simple lightweight tune ID to weight for collecting results.
 #[derive(Debug)]
@@ -146,6 +160,13 @@ const MAX_ROWS: usize = 1000;
 // One octave above and below key note.
 const HISTOGRAM_LENGTH: usize = 25;
 
+// Options for which features to enable in the search engine. We don't always want all of them.
+pub struct SearchEngineFeatures {
+    pub index_text: bool,
+    pub index_melody_interval_term: bool,
+    pub index_features: bool,
+}
+
 // A search engine.
 // TODO Trade off storage and pre-parsing of ASTs with RAM usage vs time to fetch / reconstruct data.
 // Once we've indexed it we could either keep only the ABC text in memory and parse on demand.
@@ -156,58 +177,103 @@ pub struct SearchEngine {
     clusters: relations::Clusters,
 
     // ABCs are shared around threads.
-    // TODO We may not need to put this in ARC.
-    pub abcs: Arc<storage::ABCCache>,
-
-    // Parsed ASTs.
-    // TODO do we need to retain this?
-    pub asts: HashMap<u32, tune_ast_three::Tune>,
+    pub abc_cache: storage::ReadOnlyCache,
 
     // Tune features in a binary VSM.
-    features: relations::FeaturesBinaryVSM,
+    pub features_vsm: relations::FeaturesBinaryVSM,
 
     // Interval window VSM for melody searching.
     // TODO normalize this to the other nomenclature 0f interval / degree + histogram / ngram.
-    interval_term_vsm: relations::IntervalWindowBinaryVSM,
+    pub interval_term_vsm: relations::IntervalWindowBinaryVSM,
 
     // Index of title text.
-    text_vsm: relations::TextVSM,
+    pub text_vsm: relations::TextVSM,
 
     // Cache of all known features.
     all_features_cached: HashMap<String, Vec<String>>,
+
+    max_tune_id: u32,
 }
 
 impl SearchEngine {
-    pub fn new(abcs: storage::ABCCache, clusters: relations::Clusters) -> SearchEngine {
-        let abcs_arc = Arc::new(abcs);
-
-        eprintln!("Parsing ABCs...");
-        let asts = representations::abc_to_ast_s(&abcs_arc);
-
-        eprintln!("Indexing melody...");
-        let pitches = representations::ast_to_pitches_s(&asts);
-        let intervals = representations::pitches_to_intervals_s(&pitches);
-        let interval_term_vsm = representations::intervals_to_binary_vsm(&intervals);
-
-        eprintln!("Building feature index...");
-        let features = representations::asts_to_features_s(&asts);
-
-        eprintln!("Building title index...");
-        let text_vsm = representations::asts_to_text_index_s(&asts);
-
+    pub fn new(
+        cache_path: PathBuf,
+        clusters: relations::Clusters,
+        features: SearchEngineFeatures,
+    ) -> SearchEngine {
         // TODO build synonyms and development tools for features, specifically Rhythm.
 
-        // Keep a copy of all known features.
-        let all_features_cached = features.all_features();
+        let scanner = storage::CacheScanner::new(cache_path.clone());
+        let max_tune_id = scanner.iter().map(|x| x.tune_id).max().unwrap_or(0);
 
+        // Melodic index.
+        let mut interval_term_vsm =
+            relations::IntervalWindowBinaryVSM::new(INTERVAL_TERM_SIZE, max_tune_id as usize);
+
+        // Feature index.
+        let mut features_vsm =
+            relations::FeaturesBinaryVSM::new(FEATURES_SIZE, max_tune_id as usize);
+
+        // Title text index.
+        let mut text_vsm = relations::TextVSM::new(TEXT_SIZE, max_tune_id as usize);
+
+        for (cnt, entry) in scanner.iter().enumerate() {
+            if (cnt % 1000) == 0 {
+                eprintln!("Indexing {}...", cnt);
+            }
+            let ast = representations::abc_to_ast(&entry.content);
+
+            // Extract features, insert into VSM.
+            if features.index_features {
+                let features = representations::ast_to_features(&ast);
+                for (feature_type, feature_value) in features {
+                    features_vsm.add(entry.tune_id as usize, feature_type, feature_value);
+                }
+            }
+
+            // Extract title text, insert into VSM.
+            if features.index_text {
+                let titles = ast.prelude.iter().filter_map(|x| match x {
+                    l::T::Title(x) => Some((*x).clone()),
+                    _ => None,
+                });
+
+                for title in titles {
+                    text_vsm.add(entry.tune_id as usize, title);
+                }
+            }
+
+            // Melodic index.
+            if features.index_melody_interval_term {
+                let pitches = pitch::PitchSequence::from_ast(&ast);
+                let intervals = pitch::IntervalSequence::from_pitch_sequence(&pitches);
+                interval_term_vsm.add(entry.tune_id as usize, &intervals.intervals);
+            }
+        }
+        eprintln!("Indexed all tunes.");
+
+        let (distinct_terms, vector_width, load_factor) = text_vsm.vsm.load_factor();
+        eprintln!(
+            "Text: distinct_terms: {}, vector_width: {}, load_factor: {})",
+            distinct_terms, vector_width, load_factor
+        );
+
+        // Keep a copy of all known features.
+        let all_features_cached = features_vsm.all_features();
+
+        // Now build a cache for future access to ABCs.
+        eprintln!("Building file offset index...");
+        let abc_cache = storage::ReadOnlyCache::new(cache_path).unwrap();
+
+        eprintln!("Done!");
         SearchEngine {
             clusters,
-            asts,
-            features,
+            features_vsm,
             text_vsm,
             all_features_cached,
-            abcs: abcs_arc,
+            abc_cache,
             interval_term_vsm,
+            max_tune_id,
         }
     }
 
@@ -369,7 +435,7 @@ impl SearchEngine {
     }
 
     pub fn search(
-        &self,
+        &mut self,
         query: &Query,
     ) -> (
         // Total results.
@@ -387,15 +453,17 @@ impl SearchEngine {
             // TODO should be all
             Generator::All => {
                 let mut results = ResultSet::new();
-                for i in 0..self.abcs.max_id() {
+                for i in 0..self.abc_cache.max_id() {
                     results.add(i as usize, 1.0);
                 }
                 results
             }
             Generator::IntervalNGram(ref melody) => {
-                let search_intervals = representations::pitches_to_intervals(&melody);
+                let search_pitches = pitch::PitchSequence::from_pitches(melody);
+                let search_intervals =
+                    pitch::IntervalSequence::from_pitch_sequence(&search_pitches);
                 self.interval_term_vsm.search(
-                    &search_intervals,
+                    &search_intervals.intervals,
                     0.8,
                     relations::ScoreNormalization::DocA,
                 )
@@ -422,7 +490,7 @@ impl SearchEngine {
 
         // Then generate facets if they were requested.
         let facets = if query.selection.facet {
-            Some(self.features.facet_features_for_resultset(&generated))
+            Some(self.features_vsm.facet_features_for_resultset(&generated))
         } else {
             None
         };
@@ -484,8 +552,10 @@ impl SearchEngine {
         results = results[lower..upper].to_vec();
 
         // Decorate with Titles and maybe other things.
+        // TODO Store metadata a bit better. This involves jumping all over the file currently.
         for result in results.iter_mut() {
-            if let Some(ast) = self.asts.get(&(result.id as u32)) {
+            if let Some(entry) = self.abc_cache.get(result.id as u32) {
+                let ast = representations::abc_to_ast(&entry);
                 let titles = ast
                     .prelude
                     .iter()
@@ -522,7 +592,7 @@ impl SearchEngine {
 
         for (_typ, vals) in groups.iter() {
             // OR within the type.
-            let group_result = self.features.vsm.search_by_terms(
+            let group_result = self.features_vsm.vsm.search_by_terms(
                 vals,
                 0.0,
                 true,
@@ -546,6 +616,10 @@ impl SearchEngine {
     // Return groups of features that we recognise.
     pub fn get_features(&self) -> &HashMap<String, Vec<String>> {
         &self.all_features_cached
+    }
+
+    pub fn get_max_tune_id(&self) -> u32 {
+        self.max_tune_id
     }
 }
 
